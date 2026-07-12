@@ -1,0 +1,1 @@
+"""MiniRAG Assistant application package."""
