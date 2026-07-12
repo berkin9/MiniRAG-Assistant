@@ -6,6 +6,10 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+DEFAULT_CHUNK_SIZE = 800
+DEFAULT_CHUNK_OVERLAP = 150
+SUPPORTED_EXTENSIONS = frozenset({".txt", ".md", ".pdf"})
+
 
 class ConfigurationError(ValueError):
     """Raised when an environment setting is invalid."""
@@ -16,8 +20,8 @@ class Settings:
     """Runtime settings for local document processing."""
 
     data_dir: Path = Path("data")
-    chunk_size: int = 500
-    chunk_overlap: int = 50
+    chunk_size: int = DEFAULT_CHUNK_SIZE
+    chunk_overlap: int = DEFAULT_CHUNK_OVERLAP
 
     def __post_init__(self) -> None:
         """Validate chunk settings."""
@@ -45,6 +49,6 @@ def get_settings() -> Settings:
     load_dotenv()
     return Settings(
         data_dir=Path(os.getenv("DATA_DIR", "data")),
-        chunk_size=_read_int("CHUNK_SIZE", 500),
-        chunk_overlap=_read_int("CHUNK_OVERLAP", 50),
+        chunk_size=_read_int("CHUNK_SIZE", DEFAULT_CHUNK_SIZE),
+        chunk_overlap=_read_int("CHUNK_OVERLAP", DEFAULT_CHUNK_OVERLAP),
     )

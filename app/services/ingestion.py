@@ -4,8 +4,8 @@ import logging
 from dataclasses import dataclass
 from pathlib import Path
 
+from app.config import SUPPORTED_EXTENSIONS
 from app.services.document_loader import (
-    SUPPORTED_EXTENSIONS,
     DocumentLoadError,
     load_document,
 )
@@ -25,7 +25,7 @@ class IngestionChunk:
     text: str
     source: Path
     chunk_index: int
-    metadata: dict[str, str | int]
+    metadata: dict[str, str | int | None]
 
 
 def discover_documents(directory: str | Path) -> list[Path]:
@@ -54,18 +54,27 @@ def ingest_directory(
     for path in discover_documents(directory):
         try:
             document = load_document(path)
-            chunks = split_text(document.content, chunk_size, chunk_overlap)
         except (DocumentLoadError, OSError, UnicodeError, ValueError):
             logger.error("Failed to ingest document %s", path)
             raise
 
-        results.extend(
-            IngestionChunk(
-                text=text,
-                source=document.source,
-                chunk_index=index,
-                metadata=dict(document.metadata),
-            )
-            for index, text in enumerate(chunks)
-        )
+        chunk_index = 0
+        for page in document.pages:
+            for text in split_text(page.content, chunk_size, chunk_overlap):
+                metadata: dict[str, str | int | None] = {
+                    **document.metadata,
+                    "source_file": str(document.source),
+                    "file_type": document.file_type,
+                    "page_number": page.page_number,
+                    "chunk_index": chunk_index,
+                }
+                results.append(
+                    IngestionChunk(
+                        text=text,
+                        source=document.source,
+                        chunk_index=chunk_index,
+                        metadata=metadata,
+                    )
+                )
+                chunk_index += 1
     return results

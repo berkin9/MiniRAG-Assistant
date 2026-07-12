@@ -1,5 +1,7 @@
 """Text chunking utilities."""
 
+from app.config import DEFAULT_CHUNK_OVERLAP, DEFAULT_CHUNK_SIZE
+
 
 def _find_split_end(text: str, start: int, maximum_end: int) -> int:
     """Find the best natural boundary within a chunk limit."""
@@ -13,7 +15,11 @@ def _find_split_end(text: str, start: int, maximum_end: int) -> int:
     return maximum_end
 
 
-def split_text(text: str, chunk_size: int = 500, overlap: int = 50) -> list[str]:
+def split_text(
+    text: str,
+    chunk_size: int = DEFAULT_CHUNK_SIZE,
+    overlap: int = DEFAULT_CHUNK_OVERLAP,
+) -> list[str]:
     """Split text at natural boundaries with optional character overlap."""
     if chunk_size <= 0:
         raise ValueError("chunk_size must be greater than zero")

@@ -4,9 +4,15 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from pypdf.errors import PdfReadError
 
 from app.services import document_loader
-from app.services.document_loader import UnsupportedFileTypeError, load_document
+from app.services.document_loader import (
+    DocumentLoadError,
+    EmptyDocumentError,
+    UnsupportedFileTypeError,
+    load_document,
+)
 from app.services.ingestion import DirectoryNotFoundError, discover_documents
 
 
@@ -52,6 +58,8 @@ def test_load_pdf_extracts_pages(
     assert document.content == "Page one\n\nPage two"
     assert document.file_type == "pdf"
     assert document.metadata["page_count"] == 2
+    assert [page.page_number for page in document.pages] == [1, 2]
+    assert [page.content for page in document.pages] == ["Page one", "Page two"]
 
 
 def test_load_document_rejects_unsupported_type(tmp_path: Path) -> None:
@@ -60,6 +68,48 @@ def test_load_document_rejects_unsupported_type(tmp_path: Path) -> None:
     path.write_bytes(b"content")
 
     with pytest.raises(UnsupportedFileTypeError, match="Unsupported file type"):
+        load_document(path)
+
+
+@pytest.mark.parametrize("filename", ["empty.txt", "empty.pdf"])
+def test_load_document_rejects_empty_content(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, filename: str
+) -> None:
+    """Files without extractable text should produce a clear error."""
+    path = tmp_path / filename
+    path.write_bytes(b"" if path.suffix == ".txt" else b"fake pdf")
+    if path.suffix == ".pdf":
+        page = SimpleNamespace(extract_text=lambda: "  ")
+        monkeypatch.setattr(
+            document_loader, "PdfReader", lambda _: SimpleNamespace(pages=[page])
+        )
+
+    with pytest.raises(EmptyDocumentError, match="no extractable text"):
+        load_document(path)
+
+
+def test_load_document_rejects_corrupted_pdf(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Unreadable PDFs should produce a meaningful loading error."""
+    path = tmp_path / "corrupted.pdf"
+    path.write_bytes(b"not a pdf")
+
+    def raise_pdf_error(_: Path) -> None:
+        raise PdfReadError("broken PDF")
+
+    monkeypatch.setattr(document_loader, "PdfReader", raise_pdf_error)
+
+    with pytest.raises(DocumentLoadError, match="Could not read PDF"):
+        load_document(path)
+
+
+def test_load_document_rejects_non_utf8_text(tmp_path: Path) -> None:
+    """Invalid UTF-8 text should be reported as a corrupted document."""
+    path = tmp_path / "corrupted.txt"
+    path.write_bytes(b"\xff\xfe")
+
+    with pytest.raises(DocumentLoadError, match="not valid UTF-8"):
         load_document(path)
 
 

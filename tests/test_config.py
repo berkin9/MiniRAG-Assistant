@@ -11,7 +11,7 @@ from app.config import ConfigurationError, get_settings
         ("CHUNK_SIZE", "0", "CHUNK_SIZE must be greater than zero"),
         ("CHUNK_SIZE", "nope", "CHUNK_SIZE must be an integer"),
         ("CHUNK_OVERLAP", "-1", "CHUNK_OVERLAP must be non-negative"),
-        ("CHUNK_OVERLAP", "500", "CHUNK_OVERLAP must be smaller"),
+        ("CHUNK_OVERLAP", "800", "CHUNK_OVERLAP must be smaller"),
     ],
 )
 def test_invalid_configuration_values(

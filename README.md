@@ -39,6 +39,18 @@ Chunks created: 3
 If the directory argument is omitted, the command uses `DATA_DIR` from `.env`.
 `CHUNK_SIZE` and `CHUNK_OVERLAP` control chunking.
 
+### Ingestion flow
+
+1. Recursively discover supported, non-hidden files.
+2. Read TXT and Markdown as UTF-8, or extract PDF text page by page.
+3. Reject unsupported, empty, and unreadable documents with clear errors.
+4. Split text using paragraph, line, word, then character boundaries.
+5. Attach the source file, file type, PDF page number, and chunk index to every
+   chunk for future retrieval.
+
+Chunks default to approximately 800 characters with 150 characters of overlap.
+These values can be changed through `.env` without changing application code.
+
 ## Architecture
 
 - `app/models/` contains the loaded document model.
