@@ -8,7 +8,7 @@ from pathlib import Path
 from app.config import ConfigurationError, Settings, get_settings
 from app.services.document_loader import DocumentLoadError
 from app.services.embeddings import EmbeddingError, EmbeddingService
-from app.services.indexing import index_directory, index_document
+from app.services.indexing import IndexingError, index_directory, index_document
 from app.services.ingestion import (
     DirectoryNotFoundError,
     discover_documents,
@@ -125,6 +125,7 @@ def main(argv: list[str] | None = None) -> int:
         DirectoryNotFoundError,
         DocumentLoadError,
         EmbeddingError,
+        IndexingError,
         VectorStoreError,
         OSError,
         UnicodeError,

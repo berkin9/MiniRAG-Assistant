@@ -39,6 +39,11 @@ def test_invalid_configuration_values(
             "near",
             "MAX_RETRIEVAL_DISTANCE must be a number",
         ),
+        (
+            "MAX_RETRIEVAL_DISTANCE",
+            "nan",
+            "MAX_RETRIEVAL_DISTANCE must be a finite number",
+        ),
     ],
 )
 def test_invalid_retrieval_configuration(

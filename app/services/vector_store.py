@@ -24,10 +24,13 @@ class VectorSearchResult:
 
 def normalize_metadata(metadata: ChunkMetadata) -> dict[str, ChromaValue]:
     """Convert optional values into Chroma-compatible scalar metadata."""
-    return {
-        key: 0 if key == "page_number" and value is None else "" if value is None else value
-        for key, value in metadata.items()
-    }
+    normalized: dict[str, ChromaValue] = {}
+    for key, value in metadata.items():
+        if key == "page_number" and value is None:
+            normalized[key] = 0
+        else:
+            normalized[key] = "" if value is None else value
+    return normalized
 
 
 class ChromaVectorStore:
@@ -83,12 +86,13 @@ class ChromaVectorStore:
         """Return nearest chunks ordered by ascending cosine distance."""
         if top_k <= 0:
             raise ValueError("top_k must be greater than zero")
-        if self._collection.count() == 0:
+        count = self.count()
+        if count == 0:
             return []
         try:
             response: dict[str, Any] = self._collection.query(
                 query_embeddings=[list(query_embedding)],
-                n_results=min(top_k, self._collection.count()),
+                n_results=min(top_k, count),
                 include=["documents", "metadatas", "distances"],
             )
             documents = (response.get("documents") or [[]])[0]
@@ -110,4 +114,7 @@ class ChromaVectorStore:
 
     def count(self) -> int:
         """Return the total number of stored chunks."""
-        return int(self._collection.count())
+        try:
+            return int(self._collection.count())
+        except Exception as error:
+            raise VectorStoreError("Could not count the ChromaDB index") from error

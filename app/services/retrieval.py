@@ -2,6 +2,7 @@
 
 from collections.abc import Sequence
 from dataclasses import dataclass
+from math import isfinite
 from typing import Protocol
 
 from app.services.vector_store import VectorSearchResult
@@ -56,13 +57,13 @@ def retrieve(
         raise ValueError("Query must not be empty")
     if top_k <= 0:
         raise ValueError("top_k must be greater than zero")
-    if max_distance < 0:
-        raise ValueError("max_distance must be non-negative")
+    if not isfinite(max_distance) or max_distance < 0:
+        raise ValueError("max_distance must be finite and non-negative")
 
     matches = vector_store.search(embedder.embed_query(query), top_k)
     results = tuple(
         _to_retrieval_result(match)
-        for match in matches
+        for match in sorted(matches, key=lambda item: item.distance)
         if match.distance <= max_distance
     )
     return RetrievalResponse(query=query, results=results)

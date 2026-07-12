@@ -2,6 +2,7 @@
 
 import os
 from dataclasses import dataclass
+from math import isfinite
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -48,6 +49,10 @@ class Settings:
             raise ConfigurationError("CHROMA_COLLECTION_NAME must not be empty")
         if self.default_top_k <= 0:
             raise ConfigurationError("DEFAULT_TOP_K must be greater than zero")
+        if not isfinite(self.max_retrieval_distance):
+            raise ConfigurationError(
+                "MAX_RETRIEVAL_DISTANCE must be a finite number"
+            )
         if self.max_retrieval_distance < 0:
             raise ConfigurationError(
                 "MAX_RETRIEVAL_DISTANCE must be non-negative"

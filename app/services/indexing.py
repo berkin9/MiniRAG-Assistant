@@ -10,6 +10,10 @@ from app.services.ingestion import discover_documents, ingest_document
 from app.services.vector_store import ChunkMetadata
 
 
+class IndexingError(RuntimeError):
+    """Raised when a document fails during directory indexing."""
+
+
 class DocumentEmbedder(Protocol):
     """Embedding behavior needed by document indexing."""
 
@@ -75,7 +79,14 @@ def index_directory(
     vector_store: IndexVectorStore,
 ) -> list[IndexingResult]:
     """Index every supported document below a directory."""
-    return [
-        index_document(path, chunk_size, chunk_overlap, embedder, vector_store)
-        for path in discover_documents(directory)
-    ]
+    results: list[IndexingResult] = []
+    for path in discover_documents(directory):
+        try:
+            results.append(
+                index_document(
+                    path, chunk_size, chunk_overlap, embedder, vector_store
+                )
+            )
+        except (OSError, RuntimeError, ValueError) as error:
+            raise IndexingError(f"Failed to index {path}: {error}") from error
+    return results
