@@ -13,6 +13,14 @@ DEFAULT_EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 DEFAULT_COLLECTION_NAME = "minirag_documents"
 DEFAULT_TOP_K = 4
 DEFAULT_MAX_RETRIEVAL_DISTANCE = 1.2
+DEFAULT_LLM_PROVIDER = "openai"
+DEFAULT_LLM_MODEL = "gpt-4.1-mini"
+DEFAULT_ANSWER_TEMPERATURE = 0.2
+DEFAULT_MAX_ANSWER_TOKENS = 500
+DEFAULT_REQUEST_TIMEOUT = 30.0
+DEFAULT_MAX_CONTEXT_CHARACTERS = 12_000
+DEFAULT_MAX_UPLOAD_SIZE_MB = 10
+SUPPORTED_LLM_PROVIDERS = frozenset({"openai", "gemini"})
 SUPPORTED_EXTENSIONS = frozenset({".txt", ".md", ".pdf"})
 
 
@@ -32,6 +40,16 @@ class Settings:
     chroma_collection_name: str = DEFAULT_COLLECTION_NAME
     default_top_k: int = DEFAULT_TOP_K
     max_retrieval_distance: float = DEFAULT_MAX_RETRIEVAL_DISTANCE
+    llm_provider: str = DEFAULT_LLM_PROVIDER
+    llm_model: str = DEFAULT_LLM_MODEL
+    openai_api_key: str = ""
+    gemini_api_key: str = ""
+    upload_dir: Path = Path("data/uploads")
+    answer_temperature: float = DEFAULT_ANSWER_TEMPERATURE
+    max_answer_tokens: int = DEFAULT_MAX_ANSWER_TOKENS
+    request_timeout: float = DEFAULT_REQUEST_TIMEOUT
+    max_context_characters: int = DEFAULT_MAX_CONTEXT_CHARACTERS
+    max_upload_size_mb: int = DEFAULT_MAX_UPLOAD_SIZE_MB
 
     def __post_init__(self) -> None:
         """Validate chunk settings."""
@@ -57,6 +75,25 @@ class Settings:
             raise ConfigurationError(
                 "MAX_RETRIEVAL_DISTANCE must be non-negative"
             )
+        if self.llm_provider not in SUPPORTED_LLM_PROVIDERS:
+            supported = ", ".join(sorted(SUPPORTED_LLM_PROVIDERS))
+            raise ConfigurationError(
+                f"LLM_PROVIDER must be one of: {supported}"
+            )
+        if not self.llm_model.strip():
+            raise ConfigurationError("LLM_MODEL must not be empty")
+        if not 0 <= self.answer_temperature <= 2:
+            raise ConfigurationError("ANSWER_TEMPERATURE must be between 0 and 2")
+        if self.max_answer_tokens <= 0:
+            raise ConfigurationError("MAX_ANSWER_TOKENS must be greater than zero")
+        if self.request_timeout <= 0:
+            raise ConfigurationError("LLM_REQUEST_TIMEOUT must be greater than zero")
+        if self.max_context_characters <= 0:
+            raise ConfigurationError(
+                "MAX_CONTEXT_CHARACTERS must be greater than zero"
+            )
+        if self.max_upload_size_mb <= 0:
+            raise ConfigurationError("MAX_UPLOAD_SIZE_MB must be greater than zero")
 
 
 def _read_int(name: str, default: int) -> int:
@@ -92,5 +129,25 @@ def get_settings() -> Settings:
         default_top_k=_read_int("DEFAULT_TOP_K", DEFAULT_TOP_K),
         max_retrieval_distance=_read_float(
             "MAX_RETRIEVAL_DISTANCE", DEFAULT_MAX_RETRIEVAL_DISTANCE
+        ),
+        llm_provider=os.getenv("LLM_PROVIDER", DEFAULT_LLM_PROVIDER).lower(),
+        llm_model=os.getenv("LLM_MODEL", DEFAULT_LLM_MODEL),
+        openai_api_key=os.getenv("OPENAI_API_KEY", ""),
+        gemini_api_key=os.getenv("GEMINI_API_KEY", ""),
+        upload_dir=Path(os.getenv("UPLOAD_DIR", "data/uploads")),
+        answer_temperature=_read_float(
+            "ANSWER_TEMPERATURE", DEFAULT_ANSWER_TEMPERATURE
+        ),
+        max_answer_tokens=_read_int(
+            "MAX_ANSWER_TOKENS", DEFAULT_MAX_ANSWER_TOKENS
+        ),
+        request_timeout=_read_float(
+            "LLM_REQUEST_TIMEOUT", DEFAULT_REQUEST_TIMEOUT
+        ),
+        max_context_characters=_read_int(
+            "MAX_CONTEXT_CHARACTERS", DEFAULT_MAX_CONTEXT_CHARACTERS
+        ),
+        max_upload_size_mb=_read_int(
+            "MAX_UPLOAD_SIZE_MB", DEFAULT_MAX_UPLOAD_SIZE_MB
         ),
     )

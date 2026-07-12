@@ -7,3 +7,5 @@ __pycache__/
 .chroma/
 .cache/
 .model-cache/
+data/uploads/*
+!data/uploads/.gitkeep

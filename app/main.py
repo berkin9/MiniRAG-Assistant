@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 
 from app.config import ConfigurationError, Settings, get_settings
+from app.services.answering import AnswerGenerationError, AnswerResult
 from app.services.document_loader import DocumentLoadError
 from app.services.embeddings import EmbeddingError, EmbeddingService
 from app.services.indexing import IndexingError, index_directory, index_document
@@ -14,7 +15,9 @@ from app.services.ingestion import (
     discover_documents,
     ingest_directory,
 )
+from app.services.llm_providers import LLMProviderError
 from app.services.retrieval import retrieve
+from app.services.runtime import ask_with_settings, build_index_services
 from app.services.vector_store import ChromaVectorStore, VectorStoreError
 
 
@@ -29,6 +32,9 @@ def build_parser() -> argparse.ArgumentParser:
     search_parser = subparsers.add_parser("search", help="Search indexed documents")
     search_parser.add_argument("query", help="Natural-language search query")
     search_parser.add_argument("--top-k", type=int, help="Maximum results to return")
+    ask_parser = subparsers.add_parser("ask", help="Ask a grounded question")
+    ask_parser.add_argument("question", help="Question about indexed documents")
+    ask_parser.add_argument("--top-k", type=int, help="Maximum context chunks")
     return parser
 
 
@@ -36,9 +42,7 @@ def _build_rag_services(
     settings: Settings,
 ) -> tuple[EmbeddingService, ChromaVectorStore]:
     """Create local embedding and persistent vector-store services."""
-    return EmbeddingService(settings.embedding_model), ChromaVectorStore(
-        settings.chroma_persist_dir, settings.chroma_collection_name
-    )
+    return build_index_services(settings)
 
 
 def _run_ingest(directory: str | Path, chunk_size: int, overlap: int) -> None:
@@ -102,6 +106,25 @@ def _run_search(query: str, top_k: int, settings: Settings) -> None:
         )
 
 
+def _print_answer(result: AnswerResult) -> None:
+    """Print a grounded answer and its citations."""
+    print(result.answer)
+    if not result.sources:
+        return
+    print("\nSources:")
+    for source in result.sources:
+        page = f", page {source.page_number}" if source.page_number else ""
+        print(
+            f"- [{source.label}] {Path(source.source_file).name}{page}, "
+            f"chunk {source.chunk_index}, distance {source.distance:.4f}"
+        )
+
+
+def _run_ask(question: str, top_k: int, settings: Settings) -> None:
+    """Generate and print an answer grounded in indexed chunks."""
+    _print_answer(ask_with_settings(question, top_k, settings))
+
+
 def main(argv: list[str] | None = None) -> int:
     """Run the selected command and return its exit status."""
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
@@ -120,12 +143,17 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "search":
             top_k = args.top_k if args.top_k is not None else settings.default_top_k
             _run_search(args.query, top_k, settings)
+        elif args.command == "ask":
+            top_k = args.top_k if args.top_k is not None else settings.default_top_k
+            _run_ask(args.question, top_k, settings)
     except (
         ConfigurationError,
         DirectoryNotFoundError,
         DocumentLoadError,
         EmbeddingError,
+        AnswerGenerationError,
         IndexingError,
+        LLMProviderError,
         VectorStoreError,
         OSError,
         UnicodeError,

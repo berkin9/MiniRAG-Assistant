@@ -54,3 +54,25 @@ def test_invalid_retrieval_configuration(
 
     with pytest.raises(ConfigurationError, match=message):
         get_settings()
+
+
+@pytest.mark.parametrize(
+    ("name", "value", "message"),
+    [
+        ("LLM_PROVIDER", "other", "LLM_PROVIDER"),
+        ("LLM_MODEL", " ", "LLM_MODEL must not be empty"),
+        ("ANSWER_TEMPERATURE", "2.1", "must be between 0 and 2"),
+        ("MAX_ANSWER_TOKENS", "0", "must be greater than zero"),
+        ("LLM_REQUEST_TIMEOUT", "0", "must be greater than zero"),
+        ("MAX_CONTEXT_CHARACTERS", "0", "must be greater than zero"),
+        ("MAX_UPLOAD_SIZE_MB", "0", "must be greater than zero"),
+    ],
+)
+def test_invalid_answer_configuration(
+    monkeypatch: pytest.MonkeyPatch, name: str, value: str, message: str
+) -> None:
+    """Answer and upload settings should be validated without requiring API keys."""
+    monkeypatch.setenv(name, value)
+
+    with pytest.raises(ConfigurationError, match=message):
+        get_settings()
