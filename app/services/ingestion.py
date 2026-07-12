@@ -53,28 +53,36 @@ def ingest_directory(
     results: list[IngestionChunk] = []
     for path in discover_documents(directory):
         try:
-            document = load_document(path)
+            results.extend(ingest_document(path, chunk_size, chunk_overlap))
         except (DocumentLoadError, OSError, UnicodeError, ValueError):
             logger.error("Failed to ingest document %s", path)
             raise
+    return results
 
-        chunk_index = 0
-        for page in document.pages:
-            for text in split_text(page.content, chunk_size, chunk_overlap):
-                metadata: dict[str, str | int | None] = {
-                    **document.metadata,
-                    "source_file": str(document.source),
-                    "file_type": document.file_type,
-                    "page_number": page.page_number,
-                    "chunk_index": chunk_index,
-                }
-                results.append(
-                    IngestionChunk(
-                        text=text,
-                        source=document.source,
-                        chunk_index=chunk_index,
-                        metadata=metadata,
-                    )
+
+def ingest_document(
+    path: str | Path, chunk_size: int, chunk_overlap: int
+) -> list[IngestionChunk]:
+    """Load and split one supported document into page-aware chunks."""
+    document = load_document(path)
+    results: list[IngestionChunk] = []
+    chunk_index = 0
+    for page in document.pages:
+        for text in split_text(page.content, chunk_size, chunk_overlap):
+            metadata: dict[str, str | int | None] = {
+                **document.metadata,
+                "source_file": str(document.source),
+                "file_type": document.file_type,
+                "page_number": page.page_number,
+                "chunk_index": chunk_index,
+            }
+            results.append(
+                IngestionChunk(
+                    text=text,
+                    source=document.source,
+                    chunk_index=chunk_index,
+                    metadata=metadata,
                 )
-                chunk_index += 1
+            )
+            chunk_index += 1
     return results

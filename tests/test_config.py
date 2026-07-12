@@ -22,3 +22,30 @@ def test_invalid_configuration_values(
 
     with pytest.raises(ConfigurationError, match=message):
         get_settings()
+
+
+@pytest.mark.parametrize(
+    ("name", "value", "message"),
+    [
+        ("DEFAULT_TOP_K", "0", "DEFAULT_TOP_K must be greater than zero"),
+        ("DEFAULT_TOP_K", "many", "DEFAULT_TOP_K must be an integer"),
+        (
+            "MAX_RETRIEVAL_DISTANCE",
+            "-0.1",
+            "MAX_RETRIEVAL_DISTANCE must be non-negative",
+        ),
+        (
+            "MAX_RETRIEVAL_DISTANCE",
+            "near",
+            "MAX_RETRIEVAL_DISTANCE must be a number",
+        ),
+    ],
+)
+def test_invalid_retrieval_configuration(
+    monkeypatch: pytest.MonkeyPatch, name: str, value: str, message: str
+) -> None:
+    """Invalid retrieval settings should produce clear errors."""
+    monkeypatch.setenv(name, value)
+
+    with pytest.raises(ConfigurationError, match=message):
+        get_settings()
