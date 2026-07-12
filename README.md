@@ -1,7 +1,7 @@
 # MiniRAG Assistant
 
-A minimal local foundation for loading and splitting text documents before adding
-retrieval or language-model integrations.
+A small local pipeline for loading documents and splitting them into
+retrieval-ready chunks.
 
 ## Requirements
 
@@ -19,17 +19,36 @@ cp .env.example .env
 The values in `.env` control the default data directory, chunk size, and chunk
 overlap.
 
-## Run
+## Ingest documents
 
-Place a UTF-8 text file in `data/`, then run:
+Supported document types are UTF-8 `.txt`, UTF-8 `.md`, and `.pdf`. Place files
+in `data/` (nested directories are supported), then run:
 
 ```bash
-python -m app.main data/example.txt
+python -m app.main ingest ./data
 ```
 
-The command loads the document, splits it into overlapping character chunks,
-and reports the number of chunks created. Vector storage and LLM calls are not
-implemented yet.
+Example output:
+
+```text
+INFO: Loaded document data/example.txt
+Documents loaded: 1
+Chunks created: 3
+```
+
+If the directory argument is omitted, the command uses `DATA_DIR` from `.env`.
+`CHUNK_SIZE` and `CHUNK_OVERLAP` control chunking.
+
+## Architecture
+
+- `app/models/` contains the loaded document model.
+- `app/services/document_loader.py` extracts document text and metadata.
+- `app/services/text_splitter.py` splits text at natural boundaries with overlap.
+- `app/services/ingestion.py` discovers, loads, and chunks local documents.
+- `app/main.py` provides the command-line interface.
+
+The project intentionally has no embeddings, vector database, or question
+answering yet.
 
 ## Test
 
