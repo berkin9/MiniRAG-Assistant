@@ -19,6 +19,7 @@ context and lets the application show where its answer came from.
 - Streamlit uploads, indexing status, questions, answers, and expandable sources
 - User-selected logical RAG collections backed by isolated Chroma collections
 - Manual or automatic single-collection query routing with explainable decisions
+- Optional deterministic agent that selects and executes one internal tool
 - Deterministic, network-free tests using injected fakes
 
 No fine-tuning is performed. Embeddings and ChromaDB run locally. During answer
@@ -72,6 +73,31 @@ a reason, and confidence. The question is marked as untrusted prompt data and
 the result is validated against configured collection names. Provider errors,
 malformed output, and unknown names visibly fall back to deterministic routing.
 Neither strategy searches multiple collections or combines their results.
+
+## Agentic AI Layer
+
+The optional agent adds one deliberately small decision layer before the
+existing services:
+
+```text
+User request → deterministic intent classifier → tool selector → one tool → response
+```
+
+Keyword rules classify requests as collection listing, routing inspection, or
+semantic search. Everything else defaults to grounded question answering. The
+selector returns the chosen tool and a human-readable reason without executing
+it. The agent then executes exactly one existing-service adapter:
+
+- `AskTool` uses automatically routed grounded answering.
+- `SearchTool` uses automatically routed semantic retrieval without an LLM answer.
+- `CollectionsTool` lists the existing logical collection registry.
+- `RoutingTool` reuses the existing router without retrieval.
+
+This is tool selection, not autonomous planning. There are no execution loops,
+retries, recursive calls, reflection, conversation memory, or background work.
+Intent classification itself is deterministic and does not call an LLM. The
+layer uses no agent framework: LangChain, LangGraph, CrewAI, AutoGen, and similar
+frameworks are intentionally absent.
 
 The application keeps document loading, chunking, hashing, embedding, vector
 storage, retrieval, prompt construction, provider SDKs, uploads, and UI code in
@@ -199,6 +225,17 @@ List the configured UI choices:
 python -m app.main collections
 ```
 
+Let the deterministic agent choose and execute one tool:
+
+```bash
+python -m app.main agent "How is authentication implemented?"
+python -m app.main agent "Find authentication chunks"
+python -m app.main agent "List collections"
+python -m app.main agent "Which collection handles privacy?"
+```
+
+The command prints the selected tool, selection reason, and tool result.
+
 Omitting both query flags uses `DEFAULT_QUERY_MODE`, which defaults to manual
 selection of `DEFAULT_RAG_COLLECTION`. `--collection` and `--auto-route` are
 mutually exclusive. Other safe logical names are accepted manually from the CLI
@@ -237,7 +274,9 @@ Use the sidebar to upload one or more PDF, TXT, or Markdown files and select
 the indexing collection before choosing **Index documents**. Uploads are always
 indexed into this explicit selection. Questions can independently use manual
 collection selection or automatic routing; automatic mode displays the chosen
-collection and explanation. Uploaded files are sanitized, content-addressed, and saved
+collection and explanation. Selecting **Use Agent** lets the deterministic
+agent choose how to handle questions. It does not affect uploads or indexing.
+Uploaded files are sanitized, content-addressed, and saved
 under `UPLOAD_DIR`; repeated content is skipped through the same SHA-256 logic as
 the CLI. The main area accepts questions and displays the answer plus expandable
 source citations.
@@ -265,10 +304,10 @@ pytest -q
 Tests use temporary directories, deterministic embeddings, fake providers, and
 fake vector stores. They do not require API keys, contact OpenAI or Gemini, or
 download an embedding model. Coverage includes existing ingestion/indexing,
-  provider selection, deterministic and LLM-routing validation/fallback,
-  single-collection runtime orchestration, grounded prompts, citations,
-  no-context behavior, CLI dispatch, safe uploads, duplicate uploads, and
-  persistent vector storage.
+provider selection, deterministic and LLM-routing validation/fallback,
+single-collection runtime orchestration, agent intent and tool selection,
+grounded prompts, citations, no-context behavior, CLI dispatch, Streamlit
+orchestration, safe uploads, duplicate uploads, and persistent vector storage.
 
 ## Local data, privacy, and cost
 
@@ -303,10 +342,11 @@ separately from the configured `UPLOAD_DIR` after verifying the path.
 - Automatic routing uses a small built-in route catalog; custom collections
   currently require manual selection.
 - Routing picks one collection and does not perform cross-collection ranking.
+- The agent has fixed deterministic intents and cannot plan or use memory.
 
 ## Roadmap
 
 - Configurable routing descriptions for custom collections
 - Evaluated learned routing and cross-collection retrieval strategies
-- Agentic tool selection
+- Additional explicit agent tools where they add clear user value
 - Conversation memory

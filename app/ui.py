@@ -6,11 +6,16 @@ from typing import Any
 
 import streamlit as st
 
+from app.agent import AgentResponse, build_agent
 from app.config import ConfigurationError, Settings, get_settings
-from app.services.answering import AnswerGenerationError
+from app.services.answering import AnswerGenerationError, AnswerResult
 from app.services.embeddings import EmbeddingError
 from app.services.llm_providers import LLMProviderError
+from app.services.retrieval import RetrievalResult
+from app.services.routing import RoutingDecision
 from app.services.runtime import (
+    RoutedAnswer,
+    RoutedSearch,
     answer_with_routing,
     build_collection_registry,
     build_index_services,
@@ -47,7 +52,13 @@ def main() -> None:
             index=0 if settings.default_query_mode == "manual" else 1,
         )
         automatic_routing = query_mode_label == "Automatic routing"
-        if automatic_routing:
+        use_agent = st.checkbox("Use Agent", value=False)
+        if use_agent:
+            st.caption(
+                "The agent selects one tool. Uploads still use the indexing "
+                f"collection **{selected_collection}**."
+            )
+        elif automatic_routing:
             st.caption(
                 "Questions are routed to one collection. Uploads still use "
                 f"**{selected_collection}**."
@@ -74,12 +85,12 @@ def main() -> None:
     question = st.text_input("Ask a question about indexed documents")
     if st.button("Ask", disabled=not question.strip(), type="primary"):
         try:
-            routed = answer_with_routing(
+            outcome = _run_question(
                 question,
-                settings.default_top_k,
                 settings,
-                "automatic" if automatic_routing else "manual",
-                None if automatic_routing else selected_collection,
+                selected_collection,
+                automatic_routing,
+                use_agent,
             )
         except (
             AnswerGenerationError,
@@ -90,34 +101,99 @@ def main() -> None:
         ) as error:
             st.error(str(error))
         else:
-            result = routed.answer
-            if automatic_routing:
-                decision = routed.routing
-                details = (
-                    f"Selected collection: **{decision.collection}**  \n"
-                    f"Strategy: **{decision.strategy}**  \n"
-                    f"Reason: {decision.reason}"
+            if isinstance(outcome, AgentResponse):
+                _render_agent_response(outcome)
+            else:
+                _render_routed_answer(outcome, automatic_routing)
+
+
+def _run_question(
+    question: str,
+    settings: Settings,
+    selected_collection: str,
+    automatic_routing: bool,
+    use_agent: bool,
+) -> AgentResponse | RoutedAnswer:
+    """Keep normal answering unchanged unless agent mode is selected."""
+    if use_agent:
+        return build_agent(settings).run(question)
+    return answer_with_routing(
+        question,
+        settings.default_top_k,
+        settings,
+        "automatic" if automatic_routing else "manual",
+        None if automatic_routing else selected_collection,
+    )
+
+
+def _render_agent_response(response: AgentResponse) -> None:
+    """Display one selected tool and its structured result."""
+    st.info(
+        f"Selected tool: **{response.decision.tool}**  \n"
+        f"Reason: {response.decision.reason}"
+    )
+    result = response.result
+    if isinstance(result, RoutedAnswer):
+        _render_routed_answer(result, show_routing=True)
+    elif isinstance(result, RoutedSearch):
+        _render_routing(result.routing)
+        st.subheader("Search results")
+        if not result.response.results:
+            st.write("No relevant results found.")
+        for match in result.response.results:
+            _render_search_result(match)
+    elif isinstance(result, RoutingDecision):
+        _render_routing(result)
+    else:
+        st.subheader("Configured collections")
+        for collection in result:
+            st.markdown(f"- `{collection}`")
+
+
+def _render_routed_answer(routed: RoutedAnswer, show_routing: bool) -> None:
+    """Display an existing grounded answer without changing its content."""
+    if show_routing:
+        _render_routing(routed.routing)
+    _render_answer(routed.answer)
+
+
+def _render_routing(decision: RoutingDecision) -> None:
+    """Display safe routing metadata."""
+    details = (
+        f"Selected collection: **{decision.collection}**  \n"
+        f"Strategy: **{decision.strategy}**  \n"
+        f"Reason: {decision.reason}"
+    )
+    if decision.confidence is not None:
+        details += f"  \nConfidence: {decision.confidence:.2f}"
+    st.info(details)
+
+
+def _render_answer(result: AnswerResult) -> None:
+    """Display an answer and its existing source presentation."""
+    st.subheader("Answer")
+    st.write(result.answer)
+    if result.sources:
+        with st.expander("Sources", expanded=True):
+            for source in result.sources:
+                page = f" · Page {source.page_number}" if source.page_number else ""
+                st.markdown(
+                    f"**[{source.label}] {Path(source.source_file).name}**"
+                    f"{page}  \n"
+                    f"Chunk {source.chunk_index} · "
+                    f"Distance {source.distance:.4f}"
                 )
-                if decision.confidence is not None:
-                    details += f"  \nConfidence: {decision.confidence:.2f}"
-                st.info(details)
-            st.subheader("Answer")
-            st.write(result.answer)
-            if result.sources:
-                with st.expander("Sources", expanded=True):
-                    for source in result.sources:
-                        page = (
-                            f" · Page {source.page_number}"
-                            if source.page_number
-                            else ""
-                        )
-                        st.markdown(
-                            f"**[{source.label}] {Path(source.source_file).name}**"
-                            f"{page}  \n"
-                            f"Chunk {source.chunk_index} · "
-                            f"Distance {source.distance:.4f}"
-                        )
-                        st.caption(source.text_preview)
+                st.caption(source.text_preview)
+
+
+def _render_search_result(result: RetrievalResult) -> None:
+    """Display one retrieved chunk with source metadata."""
+    page = f" · Page {result.page_number}" if result.page_number else ""
+    st.markdown(
+        f"**{Path(result.source_file).name}**{page}  \n"
+        f"Chunk {result.chunk_index} · Distance {result.distance:.4f}"
+    )
+    st.caption(result.text)
 
 
 def _index_uploaded_files(

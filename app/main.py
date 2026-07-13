@@ -5,6 +5,7 @@ import logging
 import sys
 from pathlib import Path
 
+from app.agent import AgentResponse, build_agent
 from app.config import ConfigurationError, Settings, get_settings
 from app.services.answering import AnswerGenerationError, AnswerResult
 from app.services.document_loader import DocumentLoadError
@@ -17,6 +18,7 @@ from app.services.ingestion import (
 )
 from app.services.llm_providers import LLMProviderError
 from app.services.runtime import (
+    RoutedAnswer,
     RoutedSearch,
     answer_with_routing,
     ask_with_settings,
@@ -59,6 +61,10 @@ def build_parser() -> argparse.ArgumentParser:
         "route", help="Inspect automatic collection routing"
     )
     route_parser.add_argument("question", help="Question to route without retrieval")
+    agent_parser = subparsers.add_parser(
+        "agent", help="Select and run one internal tool"
+    )
+    agent_parser.add_argument("request", help="Request for the agent to handle")
     return parser
 
 
@@ -128,6 +134,11 @@ def _run_search(
     )
     if routed.routing.strategy != "manual":
         _print_routing(routed.routing)
+    _print_search_response(routed)
+
+
+def _print_search_response(routed: RoutedSearch) -> None:
+    """Print readable matches from a structured routed search."""
     response = routed.response
     if not response.results:
         print("No relevant results found.")
@@ -188,6 +199,31 @@ def _run_route(question: str, settings: Settings) -> None:
     )
 
 
+def _run_agent(request: str, settings: Settings) -> None:
+    """Select and execute one internal tool for a user request."""
+    response = build_agent(settings).run(request)
+    print(f"Selected tool: {response.decision.tool}")
+    print(f"Reason: {response.decision.reason}")
+    _print_agent_result(response)
+
+
+def _print_agent_result(response: AgentResponse) -> None:
+    """Print the selected tool's structured result."""
+    result = response.result
+    if isinstance(result, RoutedAnswer):
+        _print_routing(result.routing)
+        _print_answer(result.answer)
+    elif isinstance(result, RoutedSearch):
+        _print_routing(result.routing)
+        _print_search_response(result)
+    elif isinstance(result, RoutingDecision):
+        _print_routing(result)
+    else:
+        print("Configured collections:")
+        for collection in result:
+            print(f"- {collection}")
+
+
 def _print_routing(decision: RoutingDecision) -> None:
     """Print safe, observable routing metadata."""
     print(f"Selected collection: {decision.collection}")
@@ -235,6 +271,8 @@ def main(argv: list[str] | None = None) -> int:
             _run_collections(settings)
         elif args.command == "route":
             _run_route(args.question, settings)
+        elif args.command == "agent":
+            _run_agent(args.request, settings)
     except (
         ConfigurationError,
         DirectoryNotFoundError,

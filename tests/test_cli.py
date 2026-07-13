@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from app import main as cli
+from app.agent.models import AgentResponse, Intent, ToolDecision
 from app.config import ConfigurationError, Settings
 from app.services.answering import AnswerResult
 from app.services.context_builder import AnswerSource
@@ -208,3 +209,30 @@ def test_automatic_search_prints_routing_decision(
     assert "Routing strategy: deterministic" in output
     assert "Reason: Matched technical terms" in output
     assert "No relevant results found" in output
+
+
+def test_agent_command_prints_selection_reason_and_result(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Agent CLI should expose its one tool decision and structured output."""
+    response = AgentResponse(
+        "list collections",
+        Intent.COLLECTIONS,
+        ToolDecision("collections", "The request asks for collections."),
+        ("general", "technical"),
+    )
+
+    class FakeAgent:
+        def run(self, request: str) -> AgentResponse:
+            assert request == "list collections"
+            return response
+
+    monkeypatch.setattr(cli, "get_settings", Settings)
+    monkeypatch.setattr(cli, "build_agent", lambda settings: FakeAgent())
+
+    assert cli.main(["agent", "list collections"]) == 0
+    output = capsys.readouterr().out
+    assert "Selected tool: collections" in output
+    assert "Reason: The request asks for collections." in output
+    assert "- general" in output
+    assert "- technical" in output
