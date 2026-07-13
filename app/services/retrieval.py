@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from math import isfinite
 from typing import Protocol
 
+from app.services.collections import normalize_collection_name
 from app.services.vector_store import VectorSearchResult
 
 
@@ -35,6 +36,7 @@ class RetrievalResult:
     chunk_index: int
     document_hash: str
     distance: float
+    collection: str = "general"
 
 
 @dataclass(frozen=True)
@@ -43,6 +45,7 @@ class RetrievalResponse:
 
     query: str
     results: tuple[RetrievalResult, ...]
+    collection: str = "general"
 
 
 def retrieve(
@@ -51,6 +54,7 @@ def retrieve(
     max_distance: float,
     embedder: QueryEmbedder,
     vector_store: SearchVectorStore,
+    collection: str = "general",
 ) -> RetrievalResponse:
     """Return chunks whose cosine distance is within the configured maximum."""
     if not query.strip():
@@ -59,17 +63,22 @@ def retrieve(
         raise ValueError("top_k must be greater than zero")
     if not isfinite(max_distance) or max_distance < 0:
         raise ValueError("max_distance must be finite and non-negative")
+    logical_collection = normalize_collection_name(collection)
 
     matches = vector_store.search(embedder.embed_query(query), top_k)
     results = tuple(
-        _to_retrieval_result(match)
+        _to_retrieval_result(match, logical_collection)
         for match in sorted(matches, key=lambda item: item.distance)
         if match.distance <= max_distance
     )
-    return RetrievalResponse(query=query, results=results)
+    return RetrievalResponse(
+        query=query, results=results, collection=logical_collection
+    )
 
 
-def _to_retrieval_result(match: VectorSearchResult) -> RetrievalResult:
+def _to_retrieval_result(
+    match: VectorSearchResult, collection: str
+) -> RetrievalResult:
     """Map normalized vector metadata into the retrieval domain model."""
     page_number = int(match.metadata.get("page_number", 0)) or None
     return RetrievalResult(
@@ -80,4 +89,5 @@ def _to_retrieval_result(match: VectorSearchResult) -> RetrievalResult:
         chunk_index=int(match.metadata["chunk_index"]),
         document_hash=str(match.metadata["document_hash"]),
         distance=match.distance,
+        collection=str(match.metadata.get("rag_collection", collection)),
     )

@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, Protocol
 
+from app.services.collections import normalize_collection_name
 from app.services.hashing import hash_file
 from app.services.ingestion import discover_documents, ingest_document
 from app.services.vector_store import ChunkMetadata
@@ -45,6 +46,7 @@ class IndexingResult:
     document_hash: str
     stored_chunks: int
     status: Literal["indexed", "already_indexed"]
+    collection: str = "general"
 
 
 def index_document(
@@ -53,22 +55,34 @@ def index_document(
     chunk_overlap: int,
     embedder: DocumentEmbedder,
     vector_store: IndexVectorStore,
+    collection: str = "general",
 ) -> IndexingResult:
     """Ingest, deduplicate, embed, and store one document."""
+    logical_collection = normalize_collection_name(collection)
     source = Path(path)
     chunks = ingest_document(source, chunk_size, chunk_overlap)
     document_hash = hash_file(source)
     if vector_store.has_document(document_hash):
-        return IndexingResult(source, document_hash, 0, "already_indexed")
+        return IndexingResult(
+            source, document_hash, 0, "already_indexed", logical_collection
+        )
 
     texts = [chunk.text for chunk in chunks]
     embeddings = embedder.embed_documents(texts)
     metadatas: list[dict[str, str | int | float | bool | None]] = []
     for chunk in chunks:
-        metadatas.append({**chunk.metadata, "document_hash": document_hash})
+        metadatas.append(
+            {
+                **chunk.metadata,
+                "document_hash": document_hash,
+                "rag_collection": logical_collection,
+            }
+        )
     ids = [f"{document_hash}:{chunk.chunk_index}" for chunk in chunks]
     vector_store.add_chunks(ids, texts, embeddings, metadatas)
-    return IndexingResult(source, document_hash, len(chunks), "indexed")
+    return IndexingResult(
+        source, document_hash, len(chunks), "indexed", logical_collection
+    )
 
 
 def index_directory(
@@ -77,14 +91,21 @@ def index_directory(
     chunk_overlap: int,
     embedder: DocumentEmbedder,
     vector_store: IndexVectorStore,
+    collection: str = "general",
 ) -> list[IndexingResult]:
     """Index every supported document below a directory."""
+    logical_collection = normalize_collection_name(collection)
     results: list[IndexingResult] = []
     for path in discover_documents(directory):
         try:
             results.append(
                 index_document(
-                    path, chunk_size, chunk_overlap, embedder, vector_store
+                    path,
+                    chunk_size,
+                    chunk_overlap,
+                    embedder,
+                    vector_store,
+                    logical_collection,
                 )
             )
         except (OSError, RuntimeError, ValueError) as error:

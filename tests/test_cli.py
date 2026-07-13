@@ -96,3 +96,66 @@ def test_existing_commands_still_dispatch(
 
     assert cli.main(arguments) == 0
     assert calls == [arguments[0]]
+
+
+def test_collection_argument_is_passed_to_index(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """CLI collection selection should be explicit and optional."""
+    captured: list[str | None] = []
+    monkeypatch.setattr(cli, "get_settings", Settings)
+    monkeypatch.setattr(
+        cli,
+        "_run_index",
+        lambda path, settings, collection: captured.append(collection),
+    )
+
+    assert cli.main(["index", "data", "--collection", "technical"]) == 0
+    assert captured == ["technical"]
+
+
+@pytest.mark.parametrize(
+    ("command", "runner"),
+    [("search", "_run_search"), ("ask", "_run_ask")],
+)
+def test_collection_argument_is_passed_to_query_commands(
+    monkeypatch: pytest.MonkeyPatch, command: str, runner: str
+) -> None:
+    """Search and grounded answers must receive the selected collection."""
+    captured: list[str | None] = []
+    monkeypatch.setattr(cli, "get_settings", Settings)
+    monkeypatch.setattr(
+        cli, runner, lambda *arguments: captured.append(arguments[-1])
+    )
+
+    assert cli.main([command, "question", "--collection", "project"]) == 0
+    assert captured == ["project"]
+
+
+def test_collections_command_is_deterministic(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Configured collections should list in stable order with the default."""
+    monkeypatch.setattr(cli, "get_settings", Settings)
+
+    assert cli.main(["collections"]) == 0
+    assert capsys.readouterr().out.splitlines() == [
+        "general (default)",
+        "project",
+        "technical",
+        "policies",
+    ]
+
+
+def test_invalid_explicit_collection_returns_nonzero(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """An unsafe explicit name must not fall back to the default."""
+    monkeypatch.setattr(cli, "get_settings", Settings)
+
+    exit_code = cli.main(
+        ["search", "authentication", "--collection", "../technical"]
+    )
+
+    assert exit_code == 1
+    assert "path traversal" in capsys.readouterr().err

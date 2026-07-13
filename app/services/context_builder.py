@@ -18,6 +18,7 @@ class AnswerSource:
     document_hash: str
     distance: float
     text_preview: str
+    collection: str = "general"
 
 
 @dataclass(frozen=True)
@@ -65,6 +66,7 @@ def build_context(
                 document_hash=result.document_hash,
                 distance=result.distance,
                 text_preview=" ".join(normalized_text.split())[:240],
+                collection=result.collection,
             )
         )
     return GroundedContext(text="\n\n".join(blocks), sources=tuple(sources))

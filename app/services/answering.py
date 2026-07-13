@@ -26,6 +26,7 @@ class AnswerResult:
     answer: str
     sources: tuple[AnswerSource, ...]
     has_relevant_context: bool
+    collection: str = "general"
 
 
 def answer_question(
@@ -36,12 +37,15 @@ def answer_question(
     embedder: QueryEmbedder,
     vector_store: SearchVectorStore,
     provider_factory: Callable[[], LLMProvider],
+    collection: str = "general",
 ) -> AnswerResult:
     """Retrieve relevant chunks and generate a strictly grounded answer."""
     if not question.strip():
         raise ValueError("Question must not be empty")
 
-    retrieval = retrieve(question, top_k, max_distance, embedder, vector_store)
+    retrieval = retrieve(
+        question, top_k, max_distance, embedder, vector_store, collection
+    )
     if not retrieval.results:
         return _no_context_result(retrieval)
 
@@ -60,6 +64,7 @@ def answer_question(
         answer=answer,
         sources=context.sources,
         has_relevant_context=True,
+        collection=retrieval.collection,
     )
 
 
@@ -78,4 +83,5 @@ def _no_context_result(retrieval: RetrievalResponse) -> AnswerResult:
         answer=message,
         sources=(),
         has_relevant_context=False,
+        collection=retrieval.collection,
     )

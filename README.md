@@ -17,6 +17,7 @@ context and lets the application show where its answer came from.
 - Stable `[Source N]` citations with file, page, chunk, and distance metadata
 - CLI commands for ingestion, indexing, search, and grounded questions
 - Streamlit uploads, indexing status, questions, answers, and expandable sources
+- User-selected logical RAG collections backed by isolated Chroma collections
 - Deterministic, network-free tests using injected fakes
 
 No fine-tuning is performed. Embeddings and ChromaDB run locally. During answer
@@ -28,9 +29,10 @@ the configured external LLM API.
 ```mermaid
 flowchart LR
     U[User] --> E[CLI / Streamlit]
-    E --> R[Retrieval Service]
+    E --> S[User-selected collection]
+    S --> R[Collection-aware indexing / retrieval]
     R --> EM[Local Embedding Service]
-    EM --> C[(Persistent ChromaDB)]
+    EM --> C[(Dedicated Chroma collection)]
     C --> RC[Relevant Chunks]
     RC --> P[Prompt Builder]
     P --> L[OpenAI / Gemini Provider]
@@ -42,6 +44,15 @@ Indexing follows a separate path:
 ```text
 Document → Loader → Page-aware Chunker → SHA-256 Check → Local Embeddings → ChromaDB
 ```
+
+A logical RAG collection is a user-facing namespace such as `general`,
+`project`, or `technical`. Each logical collection resolves to a separate
+physical Chroma collection, for example
+`minirag_documents__technical`. Documents and duplicate checks are therefore
+isolated: the same file can be indexed once in `project` and once in
+`technical`, while repeated indexing inside either collection is still skipped.
+The logical `general` collection retains the original unsuffixed
+`CHROMA_COLLECTION_NAME`, so existing V1 indexes remain available.
 
 The application keeps document loading, chunking, hashing, embedding, vector
 storage, retrieval, prompt construction, provider SDKs, uploads, and UI code in
@@ -103,6 +114,8 @@ by the CLI or Streamlit interface.
 | `EMBEDDING_MODEL` | `sentence-transformers/all-MiniLM-L6-v2` | Local embedding model |
 | `CHROMA_PERSIST_DIR` | `.chroma` | Persistent vector data directory |
 | `CHROMA_COLLECTION_NAME` | `minirag_documents` | Chroma collection name |
+| `DEFAULT_RAG_COLLECTION` | `general` | Collection used when none is supplied |
+| `RAG_COLLECTIONS` | `general,project,technical,policies` | Streamlit/listed choices |
 | `DEFAULT_TOP_K` | `4` | Maximum retrieved context chunks |
 | `MAX_RETRIEVAL_DISTANCE` | `1.2` | Largest accepted cosine distance |
 | `LLM_PROVIDER` | `openai` | `openai` or `gemini` |
@@ -132,6 +145,7 @@ Index a directory or one document:
 ```bash
 python -m app.main index ./data
 python -m app.main index ./data/project-plan.pdf
+python -m app.main index ./data --collection technical
 ```
 
 Search without calling an LLM:
@@ -139,6 +153,7 @@ Search without calling an LLM:
 ```bash
 python -m app.main search "What is the project deadline?"
 python -m app.main search "What is the project deadline?" --top-k 2
+python -m app.main search "How is authentication implemented?" --collection technical
 ```
 
 Ask a grounded question:
@@ -146,7 +161,19 @@ Ask a grounded question:
 ```bash
 python -m app.main ask "What is the project deadline?"
 python -m app.main ask "What is the project deadline?" --top-k 4
+python -m app.main ask "What is the project deadline?" --collection project
 ```
+
+List the configured UI choices:
+
+```bash
+python -m app.main collections
+```
+
+Omitting `--collection` uses `DEFAULT_RAG_COLLECTION`. Other safe logical names
+are also accepted from the CLI even when they are not listed in
+`RAG_COLLECTIONS`; configured choices primarily make the UI and listing command
+deterministic.
 
 Example answer:
 
@@ -167,7 +194,9 @@ streamlit run app/ui.py
 ```
 
 Use the sidebar to upload one or more PDF, TXT, or Markdown files and select
-**Index documents**. Uploaded files are sanitized, content-addressed, and saved
+the target RAG collection before choosing **Index documents**. That same
+selection controls grounded questions. Uploaded files are sanitized,
+content-addressed, and saved
 under `UPLOAD_DIR`; repeated content is skipped through the same SHA-256 logic as
 the CLI. The main area accepts questions and displays the answer plus expandable
 source citations.
@@ -181,8 +210,8 @@ generation.
 ```bash
 cp project-plan.pdf data/
 python -m app.main index data
-python -m app.main search "delivery date"
-python -m app.main ask "When is the delivery date?"
+python -m app.main search "delivery date" --collection general
+python -m app.main ask "When is the delivery date?" --collection general
 streamlit run app/ui.py
 ```
 
@@ -228,9 +257,11 @@ separately from the configured `UPLOAD_DIR` after verifying the path.
 - Citations identify supporting chunks but are not independently fact-checked.
 - V1 has no authentication, conversation memory, hybrid keyword search, or
   streaming answer output.
+- Collection choice is explicit. Automatic question routing is intentionally
+  not implemented yet.
 
 ## Roadmap
 
-- Multi-RAG routing across specialized document collections
+- Automatic Multi-RAG routing across specialized document collections
 - Agentic tool selection
 - Conversation memory

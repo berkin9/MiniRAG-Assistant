@@ -76,3 +76,16 @@ def test_invalid_answer_configuration(
 
     with pytest.raises(ConfigurationError, match=message):
         get_settings()
+
+
+def test_collection_configuration_is_normalized(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Environment collection choices should be normalized and deduplicated."""
+    monkeypatch.setenv("DEFAULT_RAG_COLLECTION", "General")
+    monkeypatch.setenv("RAG_COLLECTIONS", "project, Technical Docs,project")
+
+    settings = get_settings()
+
+    assert settings.default_rag_collection == "general"
+    assert settings.rag_collections == ("general", "project", "technical-docs")

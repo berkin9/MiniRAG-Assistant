@@ -7,6 +7,8 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+from app.services.collections import CollectionRegistry
+
 DEFAULT_CHUNK_SIZE = 800
 DEFAULT_CHUNK_OVERLAP = 150
 DEFAULT_EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
@@ -20,6 +22,8 @@ DEFAULT_MAX_ANSWER_TOKENS = 500
 DEFAULT_REQUEST_TIMEOUT = 30.0
 DEFAULT_MAX_CONTEXT_CHARACTERS = 12_000
 DEFAULT_MAX_UPLOAD_SIZE_MB = 10
+DEFAULT_RAG_COLLECTION = "general"
+DEFAULT_RAG_COLLECTIONS = ("general", "project", "technical", "policies")
 SUPPORTED_LLM_PROVIDERS = frozenset({"openai", "gemini"})
 SUPPORTED_EXTENSIONS = frozenset({".txt", ".md", ".pdf"})
 
@@ -50,6 +54,8 @@ class Settings:
     request_timeout: float = DEFAULT_REQUEST_TIMEOUT
     max_context_characters: int = DEFAULT_MAX_CONTEXT_CHARACTERS
     max_upload_size_mb: int = DEFAULT_MAX_UPLOAD_SIZE_MB
+    default_rag_collection: str = DEFAULT_RAG_COLLECTION
+    rag_collections: tuple[str, ...] = DEFAULT_RAG_COLLECTIONS
 
     def __post_init__(self) -> None:
         """Validate chunk settings."""
@@ -94,6 +100,18 @@ class Settings:
             )
         if self.max_upload_size_mb <= 0:
             raise ConfigurationError("MAX_UPLOAD_SIZE_MB must be greater than zero")
+        try:
+            registry = CollectionRegistry(
+                self.chroma_collection_name,
+                self.default_rag_collection,
+                self.rag_collections,
+            )
+        except ValueError as error:
+            raise ConfigurationError(str(error)) from error
+        object.__setattr__(
+            self, "default_rag_collection", registry.default_collection
+        )
+        object.__setattr__(self, "rag_collections", registry.list_collections())
 
 
 def _read_int(name: str, default: int) -> int:
@@ -149,5 +167,15 @@ def get_settings() -> Settings:
         ),
         max_upload_size_mb=_read_int(
             "MAX_UPLOAD_SIZE_MB", DEFAULT_MAX_UPLOAD_SIZE_MB
+        ),
+        default_rag_collection=os.getenv(
+            "DEFAULT_RAG_COLLECTION", DEFAULT_RAG_COLLECTION
+        ),
+        rag_collections=tuple(
+            name.strip()
+            for name in os.getenv(
+                "RAG_COLLECTIONS", ",".join(DEFAULT_RAG_COLLECTIONS)
+            ).split(",")
+            if name.strip()
         ),
     )

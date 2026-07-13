@@ -17,7 +17,11 @@ from app.services.ingestion import (
 )
 from app.services.llm_providers import LLMProviderError
 from app.services.retrieval import retrieve
-from app.services.runtime import ask_with_settings, build_index_services
+from app.services.runtime import (
+    ask_with_settings,
+    build_collection_registry,
+    build_index_services,
+)
 from app.services.vector_store import ChromaVectorStore, VectorStoreError
 
 
@@ -29,20 +33,24 @@ def build_parser() -> argparse.ArgumentParser:
     ingest_parser.add_argument("directory", nargs="?", help="Directory to ingest")
     index_parser = subparsers.add_parser("index", help="Index a file or directory")
     index_parser.add_argument("path", nargs="?", help="File or directory to index")
+    index_parser.add_argument("--collection", help="Logical RAG collection")
     search_parser = subparsers.add_parser("search", help="Search indexed documents")
     search_parser.add_argument("query", help="Natural-language search query")
     search_parser.add_argument("--top-k", type=int, help="Maximum results to return")
+    search_parser.add_argument("--collection", help="Logical RAG collection")
     ask_parser = subparsers.add_parser("ask", help="Ask a grounded question")
     ask_parser.add_argument("question", help="Question about indexed documents")
     ask_parser.add_argument("--top-k", type=int, help="Maximum context chunks")
+    ask_parser.add_argument("--collection", help="Logical RAG collection")
+    subparsers.add_parser("collections", help="List configured RAG collections")
     return parser
 
 
 def _build_rag_services(
-    settings: Settings,
+    settings: Settings, collection: str | None = None
 ) -> tuple[EmbeddingService, ChromaVectorStore]:
     """Create local embedding and persistent vector-store services."""
-    return build_index_services(settings)
+    return build_index_services(settings, collection)
 
 
 def _run_ingest(directory: str | Path, chunk_size: int, overlap: int) -> None:
@@ -53,10 +61,15 @@ def _run_ingest(directory: str | Path, chunk_size: int, overlap: int) -> None:
     print(f"Chunks created: {len(chunks)}")
 
 
-def _run_index(path: str | Path, settings: Settings) -> None:
+def _run_index(
+    path: str | Path, settings: Settings, collection: str | None = None
+) -> None:
     """Index one file or every supported file in a directory."""
+    logical_collection = build_collection_registry(settings).resolve_logical_name(
+        collection
+    )
     source = Path(path)
-    embedder, vector_store = _build_rag_services(settings)
+    embedder, vector_store = _build_rag_services(settings, logical_collection)
     if source.is_file():
         results = [
             index_document(
@@ -65,6 +78,7 @@ def _run_index(path: str | Path, settings: Settings) -> None:
                 settings.chunk_overlap,
                 embedder,
                 vector_store,
+                logical_collection,
             )
         ]
     else:
@@ -74,25 +88,35 @@ def _run_index(path: str | Path, settings: Settings) -> None:
             settings.chunk_overlap,
             embedder,
             vector_store,
+            logical_collection,
         )
     for result in results:
         print(
-            f"{result.source}: {result.status} "
+            f"{result.source}: {result.status} in {result.collection} "
             f"({result.stored_chunks} chunk(s))"
         )
     print(f"Documents processed: {len(results)}")
     print(f"Chunks stored: {sum(result.stored_chunks for result in results)}")
 
 
-def _run_search(query: str, top_k: int, settings: Settings) -> None:
+def _run_search(
+    query: str,
+    top_k: int,
+    settings: Settings,
+    collection: str | None = None,
+) -> None:
     """Search the persistent index and print readable matches."""
-    embedder, vector_store = _build_rag_services(settings)
+    logical_collection = build_collection_registry(settings).resolve_logical_name(
+        collection
+    )
+    embedder, vector_store = _build_rag_services(settings, logical_collection)
     response = retrieve(
         query,
         top_k,
         settings.max_retrieval_distance,
         embedder,
         vector_store,
+        logical_collection,
     )
     if not response.results:
         print("No relevant results found.")
@@ -120,9 +144,22 @@ def _print_answer(result: AnswerResult) -> None:
         )
 
 
-def _run_ask(question: str, top_k: int, settings: Settings) -> None:
+def _run_ask(
+    question: str,
+    top_k: int,
+    settings: Settings,
+    collection: str | None = None,
+) -> None:
     """Generate and print an answer grounded in indexed chunks."""
-    _print_answer(ask_with_settings(question, top_k, settings))
+    _print_answer(ask_with_settings(question, top_k, settings, collection))
+
+
+def _run_collections(settings: Settings) -> None:
+    """Print configured logical collections deterministically."""
+    registry = build_collection_registry(settings)
+    for collection in registry.list_collections():
+        suffix = " (default)" if collection == registry.default_collection else ""
+        print(f"{collection}{suffix}")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -139,13 +176,15 @@ def main(argv: list[str] | None = None) -> int:
                 settings.chunk_overlap,
             )
         elif args.command == "index":
-            _run_index(args.path or settings.data_dir, settings)
+            _run_index(args.path or settings.data_dir, settings, args.collection)
         elif args.command == "search":
             top_k = args.top_k if args.top_k is not None else settings.default_top_k
-            _run_search(args.query, top_k, settings)
+            _run_search(args.query, top_k, settings, args.collection)
         elif args.command == "ask":
             top_k = args.top_k if args.top_k is not None else settings.default_top_k
-            _run_ask(args.question, top_k, settings)
+            _run_ask(args.question, top_k, settings, args.collection)
+        elif args.command == "collections":
+            _run_collections(settings)
     except (
         ConfigurationError,
         DirectoryNotFoundError,

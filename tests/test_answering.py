@@ -77,12 +77,15 @@ def test_answer_uses_retrieved_context_and_returns_sources() -> None:
         FakeEmbedder(),
         FakeStore([_match()]),
         lambda: provider,
+        "project",
     )
 
     assert result.answer == "The deadline is Friday [Source 1]."
     assert result.has_relevant_context is True
     assert result.sources[0].page_number == 3
     assert result.sources[0].document_hash == "abc123"
+    assert result.collection == "project"
+    assert result.sources[0].collection == "project"
     assert "only from the supplied context" in provider.system_prompt
     assert GROUNDED_SYSTEM_PROMPT == provider.system_prompt
     assert "The project deadline is Friday." in provider.user_prompt

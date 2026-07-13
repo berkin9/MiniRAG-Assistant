@@ -10,7 +10,11 @@ from app.config import ConfigurationError, Settings, get_settings
 from app.services.answering import AnswerGenerationError
 from app.services.embeddings import EmbeddingError
 from app.services.llm_providers import LLMProviderError
-from app.services.runtime import ask_with_settings, build_index_services
+from app.services.runtime import (
+    ask_with_settings,
+    build_collection_registry,
+    build_index_services,
+)
 from app.services.uploads import UploadData, index_uploads
 from app.services.vector_store import VectorStoreError
 
@@ -31,13 +35,20 @@ def main() -> None:
 
     with st.sidebar:
         st.header("Documents")
+        registry = build_collection_registry(settings)
+        selected_collection = st.selectbox(
+            "RAG collection",
+            options=registry.list_collections(),
+            index=registry.list_collections().index(registry.default_collection),
+        )
+        st.caption(f"Selected collection: **{selected_collection}**")
         uploaded_files = st.file_uploader(
             "Upload PDF, TXT, or Markdown",
             type=["pdf", "txt", "md"],
             accept_multiple_files=True,
         )
         if st.button("Index documents", disabled=not uploaded_files):
-            _index_uploaded_files(uploaded_files, settings)
+            _index_uploaded_files(uploaded_files, settings, selected_collection)
         st.divider()
         st.subheader("Configuration")
         st.text(f"LLM provider: {settings.llm_provider}")
@@ -51,7 +62,12 @@ def main() -> None:
     question = st.text_input("Ask a question about indexed documents")
     if st.button("Ask", disabled=not question.strip(), type="primary"):
         try:
-            result = ask_with_settings(question, settings.default_top_k, settings)
+            result = ask_with_settings(
+                question,
+                settings.default_top_k,
+                settings,
+                selected_collection,
+            )
         except (
             AnswerGenerationError,
             EmbeddingError,
@@ -81,7 +97,9 @@ def main() -> None:
 
 
 def _index_uploaded_files(
-    uploaded_files: Sequence[Any], settings: Settings
+    uploaded_files: Sequence[Any],
+    settings: Settings,
+    collection: str | None = None,
 ) -> None:
     """Convert Streamlit uploads and delegate indexing to shared services."""
     try:
@@ -89,7 +107,11 @@ def _index_uploaded_files(
             UploadData(filename=uploaded.name, content=uploaded.getvalue())
             for uploaded in uploaded_files
         ]
-        embedder, vector_store = build_index_services(settings)
+        registry = build_collection_registry(settings)
+        logical_collection = registry.resolve_logical_name(collection)
+        embedder, vector_store = build_index_services(
+            settings, logical_collection
+        )
         results = index_uploads(
             uploads=files,
             upload_directory=settings.upload_dir,
@@ -98,12 +120,15 @@ def _index_uploaded_files(
             chunk_overlap=settings.chunk_overlap,
             embedder=embedder,
             vector_store=vector_store,
+            collection=logical_collection,
         )
     except (EmbeddingError, VectorStoreError, OSError, ValueError) as error:
         st.error(str(error))
         return
     for result in results:
-        message = f"{result.filename}: {result.status}"
+        message = (
+            f"{result.filename}: {result.status} in {result.collection}"
+        )
         if result.status == "failed":
             st.error(f"{message} — {result.error}")
         elif result.status == "already_indexed":

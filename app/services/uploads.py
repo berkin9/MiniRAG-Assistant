@@ -37,6 +37,7 @@ class UploadIndexResult:
     status: Literal["indexed", "already_indexed", "failed"]
     stored_chunks: int
     error: str | None = None
+    collection: str = "general"
 
 
 def sanitize_filename(filename: str) -> str:
@@ -83,6 +84,7 @@ def index_uploads(
     chunk_overlap: int,
     embedder: DocumentEmbedder,
     vector_store: IndexVectorStore,
+    collection: str = "general",
 ) -> list[UploadIndexResult]:
     """Save and independently index multiple uploads using existing services."""
     results: list[UploadIndexResult] = []
@@ -91,7 +93,12 @@ def index_uploads(
         try:
             saved_path = save_upload(upload, upload_directory, max_size_bytes)
             indexed: IndexingResult = index_document(
-                saved_path, chunk_size, chunk_overlap, embedder, vector_store
+                saved_path,
+                chunk_size,
+                chunk_overlap,
+                embedder,
+                vector_store,
+                collection,
             )
             results.append(
                 UploadIndexResult(
@@ -99,6 +106,7 @@ def index_uploads(
                     saved_path=saved_path,
                     status=indexed.status,
                     stored_chunks=indexed.stored_chunks,
+                    collection=collection,
                 )
             )
         except (OSError, RuntimeError, ValueError) as error:
@@ -109,6 +117,7 @@ def index_uploads(
                     status="failed",
                     stored_chunks=0,
                     error=str(error),
+                    collection=collection,
                 )
             )
     return results
