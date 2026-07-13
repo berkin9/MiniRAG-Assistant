@@ -8,6 +8,9 @@ from app import main as cli
 from app.config import ConfigurationError, Settings
 from app.services.answering import AnswerResult
 from app.services.context_builder import AnswerSource
+from app.services.retrieval import RetrievalResponse
+from app.services.routing import RoutingDecision
+from app.services.runtime import RoutedSearch
 
 
 def _answer(with_context: bool = True) -> AnswerResult:
@@ -159,3 +162,49 @@ def test_invalid_explicit_collection_returns_nonzero(
 
     assert exit_code == 1
     assert "path traversal" in capsys.readouterr().err
+
+
+def test_auto_route_conflicts_with_explicit_collection(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Argparse should reject ambiguous manual and automatic selection."""
+    with pytest.raises(SystemExit) as captured:
+        cli.main(
+            [
+                "search",
+                "question",
+                "--collection",
+                "project",
+                "--auto-route",
+            ]
+        )
+
+    assert captured.value.code != 0
+    assert "not allowed with argument" in capsys.readouterr().err
+
+
+def test_automatic_search_prints_routing_decision(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Automatic CLI queries should make their route observable."""
+    decision = RoutingDecision(
+        "technical",
+        "Matched technical terms: authentication, implementation",
+        0.75,
+        "deterministic",
+    )
+    monkeypatch.setattr(cli, "get_settings", Settings)
+    monkeypatch.setattr(
+        cli,
+        "search_with_settings",
+        lambda *args: RoutedSearch(
+            RetrievalResponse("question", (), "technical"), decision
+        ),
+    )
+
+    assert cli.main(["search", "question", "--auto-route"]) == 0
+    output = capsys.readouterr().out
+    assert "Selected collection: technical" in output
+    assert "Routing strategy: deterministic" in output
+    assert "Reason: Matched technical terms" in output
+    assert "No relevant results found" in output

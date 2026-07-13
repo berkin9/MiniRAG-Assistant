@@ -16,12 +16,16 @@ from app.services.ingestion import (
     ingest_directory,
 )
 from app.services.llm_providers import LLMProviderError
-from app.services.retrieval import retrieve
 from app.services.runtime import (
+    RoutedSearch,
+    answer_with_routing,
     ask_with_settings,
     build_collection_registry,
     build_index_services,
+    route_with_settings,
+    search_with_settings,
 )
+from app.services.routing import RoutingDecision
 from app.services.vector_store import ChromaVectorStore, VectorStoreError
 
 
@@ -37,12 +41,24 @@ def build_parser() -> argparse.ArgumentParser:
     search_parser = subparsers.add_parser("search", help="Search indexed documents")
     search_parser.add_argument("query", help="Natural-language search query")
     search_parser.add_argument("--top-k", type=int, help="Maximum results to return")
-    search_parser.add_argument("--collection", help="Logical RAG collection")
+    search_mode = search_parser.add_mutually_exclusive_group()
+    search_mode.add_argument("--collection", help="Logical RAG collection")
+    search_mode.add_argument(
+        "--auto-route", action="store_true", help="Route the query automatically"
+    )
     ask_parser = subparsers.add_parser("ask", help="Ask a grounded question")
     ask_parser.add_argument("question", help="Question about indexed documents")
     ask_parser.add_argument("--top-k", type=int, help="Maximum context chunks")
-    ask_parser.add_argument("--collection", help="Logical RAG collection")
+    ask_mode = ask_parser.add_mutually_exclusive_group()
+    ask_mode.add_argument("--collection", help="Logical RAG collection")
+    ask_mode.add_argument(
+        "--auto-route", action="store_true", help="Route the question automatically"
+    )
     subparsers.add_parser("collections", help="List configured RAG collections")
+    route_parser = subparsers.add_parser(
+        "route", help="Inspect automatic collection routing"
+    )
+    route_parser.add_argument("question", help="Question to route without retrieval")
     return parser
 
 
@@ -103,21 +119,16 @@ def _run_search(
     query: str,
     top_k: int,
     settings: Settings,
+    query_mode: str = "manual",
     collection: str | None = None,
 ) -> None:
     """Search the persistent index and print readable matches."""
-    logical_collection = build_collection_registry(settings).resolve_logical_name(
-        collection
+    routed: RoutedSearch = search_with_settings(
+        query, top_k, settings, query_mode, collection
     )
-    embedder, vector_store = _build_rag_services(settings, logical_collection)
-    response = retrieve(
-        query,
-        top_k,
-        settings.max_retrieval_distance,
-        embedder,
-        vector_store,
-        logical_collection,
-    )
+    if routed.routing.strategy != "manual":
+        _print_routing(routed.routing)
+    response = routed.response
     if not response.results:
         print("No relevant results found.")
         return
@@ -148,10 +159,18 @@ def _run_ask(
     question: str,
     top_k: int,
     settings: Settings,
+    query_mode: str = "manual",
     collection: str | None = None,
 ) -> None:
     """Generate and print an answer grounded in indexed chunks."""
-    _print_answer(ask_with_settings(question, top_k, settings, collection))
+    if query_mode == "manual":
+        _print_answer(ask_with_settings(question, top_k, settings, collection))
+        return
+    routed = answer_with_routing(
+        question, top_k, settings, query_mode, collection
+    )
+    _print_routing(routed.routing)
+    _print_answer(routed.answer)
 
 
 def _run_collections(settings: Settings) -> None:
@@ -160,6 +179,33 @@ def _run_collections(settings: Settings) -> None:
     for collection in registry.list_collections():
         suffix = " (default)" if collection == registry.default_collection else ""
         print(f"{collection}{suffix}")
+
+
+def _run_route(question: str, settings: Settings) -> None:
+    """Inspect automatic routing without retrieval or answer generation."""
+    _print_routing(
+        route_with_settings(question, settings, query_mode="automatic")
+    )
+
+
+def _print_routing(decision: RoutingDecision) -> None:
+    """Print safe, observable routing metadata."""
+    print(f"Selected collection: {decision.collection}")
+    print(f"Routing strategy: {decision.strategy}")
+    print(f"Reason: {decision.reason}")
+    if decision.confidence is not None:
+        print(f"Confidence: {decision.confidence:.2f}")
+
+
+def _resolve_query_mode(
+    auto_route: bool, collection: str | None, settings: Settings
+) -> str:
+    """Resolve CLI flags while retaining the configured default mode."""
+    if collection is not None:
+        return "manual"
+    if auto_route:
+        return "automatic"
+    return settings.default_query_mode
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -179,12 +225,16 @@ def main(argv: list[str] | None = None) -> int:
             _run_index(args.path or settings.data_dir, settings, args.collection)
         elif args.command == "search":
             top_k = args.top_k if args.top_k is not None else settings.default_top_k
-            _run_search(args.query, top_k, settings, args.collection)
+            mode = _resolve_query_mode(args.auto_route, args.collection, settings)
+            _run_search(args.query, top_k, settings, mode, args.collection)
         elif args.command == "ask":
             top_k = args.top_k if args.top_k is not None else settings.default_top_k
-            _run_ask(args.question, top_k, settings, args.collection)
+            mode = _resolve_query_mode(args.auto_route, args.collection, settings)
+            _run_ask(args.question, top_k, settings, mode, args.collection)
         elif args.command == "collections":
             _run_collections(settings)
+        elif args.command == "route":
+            _run_route(args.question, settings)
     except (
         ConfigurationError,
         DirectoryNotFoundError,

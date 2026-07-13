@@ -18,6 +18,7 @@ context and lets the application show where its answer came from.
 - CLI commands for ingestion, indexing, search, and grounded questions
 - Streamlit uploads, indexing status, questions, answers, and expandable sources
 - User-selected logical RAG collections backed by isolated Chroma collections
+- Manual or automatic single-collection query routing with explainable decisions
 - Deterministic, network-free tests using injected fakes
 
 No fine-tuning is performed. Embeddings and ChromaDB run locally. During answer
@@ -29,7 +30,10 @@ the configured external LLM API.
 ```mermaid
 flowchart LR
     U[User] --> E[CLI / Streamlit]
-    E --> S[User-selected collection]
+    E --> M{Query mode}
+    M -->|Manual| S[User-selected collection]
+    M -->|Automatic| RT[Collection router]
+    RT --> S
     S --> R[Collection-aware indexing / retrieval]
     R --> EM[Local Embedding Service]
     EM --> C[(Dedicated Chroma collection)]
@@ -53,6 +57,21 @@ isolated: the same file can be indexed once in `project` and once in
 `technical`, while repeated indexing inside either collection is still skipped.
 The logical `general` collection retains the original unsuffixed
 `CHROMA_COLLECTION_NAME`, so existing V1 indexes remain available.
+
+Question routing always resolves to exactly one logical collection before
+retrieval. Manual mode remains the default and preserves the original behavior.
+Automatic mode uses deterministic keyword scoring by default: exact keywords
+score one point, multi-word phrases score two, configured collection order
+breaks ties, and no match selects `DEFAULT_RAG_COLLECTION`. Built-in routing
+descriptions cover `general`, `project`, `technical`, and `policies`. Other safe
+collection names continue to work manually but are not automatically selected
+without a defined routing description.
+
+Optional LLM routing requests strict JSON containing one allowed collection,
+a reason, and confidence. The question is marked as untrusted prompt data and
+the result is validated against configured collection names. Provider errors,
+malformed output, and unknown names visibly fall back to deterministic routing.
+Neither strategy searches multiple collections or combines their results.
 
 The application keeps document loading, chunking, hashing, embedding, vector
 storage, retrieval, prompt construction, provider SDKs, uploads, and UI code in
@@ -116,6 +135,8 @@ by the CLI or Streamlit interface.
 | `CHROMA_COLLECTION_NAME` | `minirag_documents` | Chroma collection name |
 | `DEFAULT_RAG_COLLECTION` | `general` | Collection used when none is supplied |
 | `RAG_COLLECTIONS` | `general,project,technical,policies` | Streamlit/listed choices |
+| `DEFAULT_QUERY_MODE` | `manual` | Default question mode: `manual` or `automatic` |
+| `RAG_ROUTING_MODE` | `deterministic` | Automatic strategy: `deterministic` or `llm` |
 | `DEFAULT_TOP_K` | `4` | Maximum retrieved context chunks |
 | `MAX_RETRIEVAL_DISTANCE` | `1.2` | Largest accepted cosine distance |
 | `LLM_PROVIDER` | `openai` | `openai` or `gemini` |
@@ -154,6 +175,7 @@ Search without calling an LLM:
 python -m app.main search "What is the project deadline?"
 python -m app.main search "What is the project deadline?" --top-k 2
 python -m app.main search "How is authentication implemented?" --collection technical
+python -m app.main search "How is authentication implemented?" --auto-route
 ```
 
 Ask a grounded question:
@@ -162,6 +184,13 @@ Ask a grounded question:
 python -m app.main ask "What is the project deadline?"
 python -m app.main ask "What is the project deadline?" --top-k 4
 python -m app.main ask "What is the project deadline?" --collection project
+python -m app.main ask "What is the project deadline?" --auto-route
+```
+
+Inspect an automatic routing decision without searching or answering:
+
+```bash
+python -m app.main route "How is authentication implemented?"
 ```
 
 List the configured UI choices:
@@ -170,10 +199,21 @@ List the configured UI choices:
 python -m app.main collections
 ```
 
-Omitting `--collection` uses `DEFAULT_RAG_COLLECTION`. Other safe logical names
-are also accepted from the CLI even when they are not listed in
-`RAG_COLLECTIONS`; configured choices primarily make the UI and listing command
-deterministic.
+Omitting both query flags uses `DEFAULT_QUERY_MODE`, which defaults to manual
+selection of `DEFAULT_RAG_COLLECTION`. `--collection` and `--auto-route` are
+mutually exclusive. Other safe logical names are accepted manually from the CLI
+even when they are not listed in `RAG_COLLECTIONS`; configured choices primarily
+make the UI and listing command deterministic.
+
+Automatic commands print their selected collection, strategy, reason, and
+confidence before results. For example:
+
+```text
+Selected collection: technical
+Routing strategy: deterministic
+Reason: Matched technical terms: authentication, implementation
+Confidence: 0.50
+```
 
 Example answer:
 
@@ -194,9 +234,10 @@ streamlit run app/ui.py
 ```
 
 Use the sidebar to upload one or more PDF, TXT, or Markdown files and select
-the target RAG collection before choosing **Index documents**. That same
-selection controls grounded questions. Uploaded files are sanitized,
-content-addressed, and saved
+the indexing collection before choosing **Index documents**. Uploads are always
+indexed into this explicit selection. Questions can independently use manual
+collection selection or automatic routing; automatic mode displays the chosen
+collection and explanation. Uploaded files are sanitized, content-addressed, and saved
 under `UPLOAD_DIR`; repeated content is skipped through the same SHA-256 logic as
 the CLI. The main area accepts questions and displays the answer plus expandable
 source citations.
@@ -224,8 +265,10 @@ pytest -q
 Tests use temporary directories, deterministic embeddings, fake providers, and
 fake vector stores. They do not require API keys, contact OpenAI or Gemini, or
 download an embedding model. Coverage includes existing ingestion/indexing,
-provider selection, grounded prompts, citations, no-context behavior, CLI
-dispatch, safe uploads, duplicate uploads, and persistent vector storage.
+  provider selection, deterministic and LLM-routing validation/fallback,
+  single-collection runtime orchestration, grounded prompts, citations,
+  no-context behavior, CLI dispatch, safe uploads, duplicate uploads, and
+  persistent vector storage.
 
 ## Local data, privacy, and cost
 
@@ -257,11 +300,13 @@ separately from the configured `UPLOAD_DIR` after verifying the path.
 - Citations identify supporting chunks but are not independently fact-checked.
 - V1 has no authentication, conversation memory, hybrid keyword search, or
   streaming answer output.
-- Collection choice is explicit. Automatic question routing is intentionally
-  not implemented yet.
+- Automatic routing uses a small built-in route catalog; custom collections
+  currently require manual selection.
+- Routing picks one collection and does not perform cross-collection ranking.
 
 ## Roadmap
 
-- Automatic Multi-RAG routing across specialized document collections
+- Configurable routing descriptions for custom collections
+- Evaluated learned routing and cross-collection retrieval strategies
 - Agentic tool selection
 - Conversation memory

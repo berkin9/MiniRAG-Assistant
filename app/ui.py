@@ -11,7 +11,7 @@ from app.services.answering import AnswerGenerationError
 from app.services.embeddings import EmbeddingError
 from app.services.llm_providers import LLMProviderError
 from app.services.runtime import (
-    ask_with_settings,
+    answer_with_routing,
     build_collection_registry,
     build_index_services,
 )
@@ -37,11 +37,23 @@ def main() -> None:
         st.header("Documents")
         registry = build_collection_registry(settings)
         selected_collection = st.selectbox(
-            "RAG collection",
+            "Indexing collection",
             options=registry.list_collections(),
             index=registry.list_collections().index(registry.default_collection),
         )
-        st.caption(f"Selected collection: **{selected_collection}**")
+        query_mode_label = st.radio(
+            "Query mode",
+            options=("Manual collection", "Automatic routing"),
+            index=0 if settings.default_query_mode == "manual" else 1,
+        )
+        automatic_routing = query_mode_label == "Automatic routing"
+        if automatic_routing:
+            st.caption(
+                "Questions are routed to one collection. Uploads still use "
+                f"**{selected_collection}**."
+            )
+        else:
+            st.caption(f"Selected collection: **{selected_collection}**")
         uploaded_files = st.file_uploader(
             "Upload PDF, TXT, or Markdown",
             type=["pdf", "txt", "md"],
@@ -62,11 +74,12 @@ def main() -> None:
     question = st.text_input("Ask a question about indexed documents")
     if st.button("Ask", disabled=not question.strip(), type="primary"):
         try:
-            result = ask_with_settings(
+            routed = answer_with_routing(
                 question,
                 settings.default_top_k,
                 settings,
-                selected_collection,
+                "automatic" if automatic_routing else "manual",
+                None if automatic_routing else selected_collection,
             )
         except (
             AnswerGenerationError,
@@ -77,6 +90,17 @@ def main() -> None:
         ) as error:
             st.error(str(error))
         else:
+            result = routed.answer
+            if automatic_routing:
+                decision = routed.routing
+                details = (
+                    f"Selected collection: **{decision.collection}**  \n"
+                    f"Strategy: **{decision.strategy}**  \n"
+                    f"Reason: {decision.reason}"
+                )
+                if decision.confidence is not None:
+                    details += f"  \nConfidence: {decision.confidence:.2f}"
+                st.info(details)
             st.subheader("Answer")
             st.write(result.answer)
             if result.sources:

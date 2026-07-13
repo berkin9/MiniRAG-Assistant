@@ -24,6 +24,10 @@ DEFAULT_MAX_CONTEXT_CHARACTERS = 12_000
 DEFAULT_MAX_UPLOAD_SIZE_MB = 10
 DEFAULT_RAG_COLLECTION = "general"
 DEFAULT_RAG_COLLECTIONS = ("general", "project", "technical", "policies")
+DEFAULT_RAG_ROUTING_MODE = "deterministic"
+DEFAULT_QUERY_MODE = "manual"
+SUPPORTED_RAG_ROUTING_MODES = frozenset({"deterministic", "llm"})
+SUPPORTED_QUERY_MODES = frozenset({"manual", "automatic"})
 SUPPORTED_LLM_PROVIDERS = frozenset({"openai", "gemini"})
 SUPPORTED_EXTENSIONS = frozenset({".txt", ".md", ".pdf"})
 
@@ -56,6 +60,8 @@ class Settings:
     max_upload_size_mb: int = DEFAULT_MAX_UPLOAD_SIZE_MB
     default_rag_collection: str = DEFAULT_RAG_COLLECTION
     rag_collections: tuple[str, ...] = DEFAULT_RAG_COLLECTIONS
+    rag_routing_mode: str = DEFAULT_RAG_ROUTING_MODE
+    default_query_mode: str = DEFAULT_QUERY_MODE
 
     def __post_init__(self) -> None:
         """Validate chunk settings."""
@@ -112,6 +118,16 @@ class Settings:
             self, "default_rag_collection", registry.default_collection
         )
         object.__setattr__(self, "rag_collections", registry.list_collections())
+        if self.rag_routing_mode not in SUPPORTED_RAG_ROUTING_MODES:
+            supported = ", ".join(sorted(SUPPORTED_RAG_ROUTING_MODES))
+            raise ConfigurationError(
+                f"RAG_ROUTING_MODE must be one of: {supported}"
+            )
+        if self.default_query_mode not in SUPPORTED_QUERY_MODES:
+            supported = ", ".join(sorted(SUPPORTED_QUERY_MODES))
+            raise ConfigurationError(
+                f"DEFAULT_QUERY_MODE must be one of: {supported}"
+            )
 
 
 def _read_int(name: str, default: int) -> int:
@@ -178,4 +194,10 @@ def get_settings() -> Settings:
             ).split(",")
             if name.strip()
         ),
+        rag_routing_mode=os.getenv(
+            "RAG_ROUTING_MODE", DEFAULT_RAG_ROUTING_MODE
+        ).lower(),
+        default_query_mode=os.getenv(
+            "DEFAULT_QUERY_MODE", DEFAULT_QUERY_MODE
+        ).lower(),
     )

@@ -1,6 +1,6 @@
 """Provider-independent LLM interface and SDK adapters."""
 
-from typing import Protocol
+from typing import Any, Protocol
 
 from app.config import Settings
 
@@ -40,14 +40,20 @@ class OpenAIProvider:
         self._temperature = temperature
         self._max_tokens = max_tokens
         self._timeout = timeout
+        self._client: Any | None = None
+
+    def _get_client(self) -> Any:
+        """Create the OpenAI client only on the first provider call."""
+        if self._client is None:
+            from openai import OpenAI
+
+            self._client = OpenAI(api_key=self._api_key, timeout=self._timeout)
+        return self._client
 
     def generate(self, system_prompt: str, user_prompt: str) -> str:
         """Call OpenAI lazily and return provider-independent text."""
         try:
-            from openai import OpenAI
-
-            client = OpenAI(api_key=self._api_key, timeout=self._timeout)
-            response = client.responses.create(
+            response = self._get_client().responses.create(
                 model=self._model,
                 instructions=system_prompt,
                 input=user_prompt,
@@ -78,18 +84,26 @@ class GeminiProvider:
         self._temperature = temperature
         self._max_tokens = max_tokens
         self._timeout = timeout
+        self._client: Any | None = None
+
+    def _get_client(self) -> Any:
+        """Create the Gemini client only on the first provider call."""
+        if self._client is None:
+            from google import genai
+            from google.genai import types
+
+            self._client = genai.Client(
+                api_key=self._api_key,
+                http_options=types.HttpOptions(timeout=int(self._timeout * 1_000)),
+            )
+        return self._client
 
     def generate(self, system_prompt: str, user_prompt: str) -> str:
         """Call Gemini lazily and return provider-independent text."""
         try:
-            from google import genai
             from google.genai import types
 
-            client = genai.Client(
-                api_key=self._api_key,
-                http_options=types.HttpOptions(timeout=int(self._timeout * 1_000)),
-            )
-            response = client.models.generate_content(
+            response = self._get_client().models.generate_content(
                 model=self._model,
                 contents=user_prompt,
                 config=types.GenerateContentConfig(

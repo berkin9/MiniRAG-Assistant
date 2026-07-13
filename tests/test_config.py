@@ -89,3 +89,20 @@ def test_collection_configuration_is_normalized(
 
     assert settings.default_rag_collection == "general"
     assert settings.rag_collections == ("general", "project", "technical-docs")
+
+
+@pytest.mark.parametrize(
+    ("name", "value", "message"),
+    [
+        ("RAG_ROUTING_MODE", "agent", "RAG_ROUTING_MODE must be one of"),
+        ("DEFAULT_QUERY_MODE", "sometimes", "DEFAULT_QUERY_MODE must be one of"),
+    ],
+)
+def test_invalid_routing_configuration(
+    monkeypatch: pytest.MonkeyPatch, name: str, value: str, message: str
+) -> None:
+    """Routing strategy and interaction mode must be validated at startup."""
+    monkeypatch.setenv(name, value)
+
+    with pytest.raises(ConfigurationError, match=message):
+        get_settings()
