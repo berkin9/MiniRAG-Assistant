@@ -62,7 +62,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     route_parser.add_argument("question", help="Question to route without retrieval")
     agent_parser = subparsers.add_parser(
-        "agent", help="Select and run one internal tool"
+        "agent", help="Select and run a bounded agent plan"
     )
     agent_parser.add_argument("request", help="Request for the agent to handle")
     return parser
@@ -200,21 +200,43 @@ def _run_route(question: str, settings: Settings) -> None:
 
 
 def _run_agent(request: str, settings: Settings) -> None:
-    """Select and execute one internal tool for a user request."""
+    """Select and execute one predefined bounded plan for a request."""
     response = build_agent(settings).run(request)
-    print(f"Selected tool: {response.decision.tool}")
-    print(f"Reason: {response.decision.reason}")
-    _print_agent_result(response)
+    if len(response.steps) == 1:
+        print(f"Selected tool: {response.decision.tool}")
+        print(f"Reason: {response.decision.reason}")
+        _print_agent_tool_result(response.result, show_routing=True)
+        return
+
+    plan = response.plan
+    if plan is None:
+        raise ValueError("Agent response is missing its execution plan")
+    print(f"Plan: {plan.name}")
+    print(f"Reason: {plan.reason}")
+    for index, step in enumerate(response.steps, start=1):
+        print(f"\nStep {index}: {step.tool}")
+        _print_agent_tool_result(
+            step.result,
+            show_routing=step.tool == "routing",
+            label_answer=True,
+        )
 
 
-def _print_agent_result(response: AgentResponse) -> None:
-    """Print the selected tool's structured result."""
-    result = response.result
+def _print_agent_tool_result(
+    result: object,
+    show_routing: bool = True,
+    label_answer: bool = False,
+) -> None:
+    """Print one agent tool result without exposing internal objects."""
     if isinstance(result, RoutedAnswer):
-        _print_routing(result.routing)
+        if show_routing:
+            _print_routing(result.routing)
+        if label_answer:
+            print("Answer:")
         _print_answer(result.answer)
     elif isinstance(result, RoutedSearch):
-        _print_routing(result.routing)
+        if show_routing:
+            _print_routing(result.routing)
         _print_search_response(result)
     elif isinstance(result, RoutingDecision):
         _print_routing(result)

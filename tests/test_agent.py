@@ -18,9 +18,11 @@ from app.agent.tool_selector import ToolSelector
         ("Which collection handles authentication?", Intent.ROUTING),
         ("Why technical?", Intent.ROUTING),
         ("Route this question", Intent.ROUTING),
+        ("Explain the routing", Intent.ROUTING),
         ("Search for authentication details", Intent.SEARCH),
         ("Find the project deadline", Intent.SEARCH),
         ("Retrieve relevant chunks", Intent.SEARCH),
+        ("Show the matching sources", Intent.SEARCH),
         ("How is authentication implemented?", Intent.ASK),
     ],
 )

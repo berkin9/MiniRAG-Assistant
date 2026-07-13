@@ -19,7 +19,7 @@ context and lets the application show where its answer came from.
 - Streamlit uploads, indexing status, questions, answers, and expandable sources
 - User-selected logical RAG collections backed by isolated Chroma collections
 - Manual or automatic single-collection query routing with explainable decisions
-- Optional deterministic agent that selects and executes one internal tool
+- Optional bounded agent that executes one or two predefined tools
 - Deterministic, network-free tests using injected fakes
 
 No fine-tuning is performed. Embeddings and ChromaDB run locally. During answer
@@ -74,30 +74,53 @@ the result is validated against configured collection names. Provider errors,
 malformed output, and unknown names visibly fall back to deterministic routing.
 Neither strategy searches multiple collections or combines their results.
 
-## Agentic AI Layer
+## Bounded Multi-Step Agent
 
-The optional agent adds one deliberately small decision layer before the
+The optional agent adds a deliberately bounded decision layer before the
 existing services:
 
 ```text
-User request → deterministic intent classifier → tool selector → one tool → response
+User request
+    ↓
+Deterministic intent classifier and plan selector
+    ↓
+One-step or two-step predefined plan
+    ↓
+Sequential tool execution
+    ↓
+Structured response
 ```
 
 Keyword rules classify requests as collection listing, routing inspection, or
 semantic search. Everything else defaults to grounded question answering. The
 selector returns the chosen tool and a human-readable reason without executing
-it. The agent then executes exactly one existing-service adapter:
+it. Clear compound phrases can select one of two fixed two-step plans. All
+supported plans are:
+
+- `ask`: `AskTool`
+- `search`: `SearchTool`
+- `collections`: `CollectionsTool`
+- `routing`: `RoutingTool`
+- `route_and_ask`: `RoutingTool → AskTool`
+- `route_and_search`: `RoutingTool → SearchTool`
+
+The tools remain small adapters over existing services:
 
 - `AskTool` uses automatically routed grounded answering.
 - `SearchTool` uses automatically routed semantic retrieval without an LLM answer.
 - `CollectionsTool` lists the existing logical collection registry.
 - `RoutingTool` reuses the existing router without retrieval.
 
-This is tool selection, not autonomous planning. There are no execution loops,
-retries, recursive calls, reflection, conversation memory, or background work.
-Intent classification itself is deterministic and does not call an LLM. The
-layer uses no agent framework: LangChain, LangGraph, CrewAI, AutoGen, and similar
-frameworks are intentionally absent.
+Plans are selected from this fixed catalog; they are never invented by an LLM.
+Compound execution passes the first routing decision through an ephemeral
+per-request context, so Ask/Search uses the same collection without routing a
+second time. The context is discarded after the request and is not memory.
+
+This is bounded tool selection, not autonomous planning. Plans contain at most
+two tools and stop immediately on failure. There are no retries, recursive
+calls, reflection, conversation memory, or background work. The layer uses no
+agent framework: LangChain, LangGraph, CrewAI, AutoGen, and similar frameworks
+are intentionally absent.
 
 The application keeps document loading, chunking, hashing, embedding, vector
 storage, retrieval, prompt construction, provider SDKs, uploads, and UI code in
@@ -225,16 +248,21 @@ List the configured UI choices:
 python -m app.main collections
 ```
 
-Let the deterministic agent choose and execute one tool:
+Let the deterministic agent choose a bounded plan:
 
 ```bash
 python -m app.main agent "How is authentication implemented?"
 python -m app.main agent "Find authentication chunks"
 python -m app.main agent "List collections"
 python -m app.main agent "Which collection handles privacy?"
+python -m app.main agent \
+  "Explain the routing, then answer: how is authentication implemented?"
+python -m app.main agent \
+  "Route this question and show matching sources: where are refresh tokens stored?"
 ```
 
-The command prints the selected tool, selection reason, and tool result.
+Single-step commands retain the selected-tool output. Compound commands print
+the plan, reason, and both ordered step results.
 
 Omitting both query flags uses `DEFAULT_QUERY_MODE`, which defaults to manual
 selection of `DEFAULT_RAG_COLLECTION`. `--collection` and `--auto-route` are
@@ -276,6 +304,8 @@ indexed into this explicit selection. Questions can independently use manual
 collection selection or automatic routing; automatic mode displays the chosen
 collection and explanation. Selecting **Use Agent** lets the deterministic
 agent choose how to handle questions. It does not affect uploads or indexing.
+One-step results retain the existing display. Two-step results show the selected
+plan, routing step, and final answer or retrieved chunks in order.
 Uploaded files are sanitized, content-addressed, and saved
 under `UPLOAD_DIR`; repeated content is skipped through the same SHA-256 logic as
 the CLI. The main area accepts questions and displays the answer plus expandable
@@ -305,9 +335,10 @@ Tests use temporary directories, deterministic embeddings, fake providers, and
 fake vector stores. They do not require API keys, contact OpenAI or Gemini, or
 download an embedding model. Coverage includes existing ingestion/indexing,
 provider selection, deterministic and LLM-routing validation/fallback,
-single-collection runtime orchestration, agent intent and tool selection,
-grounded prompts, citations, no-context behavior, CLI dispatch, Streamlit
-orchestration, safe uploads, duplicate uploads, and persistent vector storage.
+single-collection runtime orchestration, bounded plan validation and execution,
+routing-context reuse, agent intent and tool selection, grounded prompts,
+citations, failure short-circuiting, CLI dispatch, Streamlit orchestration, safe
+uploads, duplicate uploads, and persistent vector storage.
 
 ## Local data, privacy, and cost
 
@@ -342,11 +373,11 @@ separately from the configured `UPLOAD_DIR` after verifying the path.
 - Automatic routing uses a small built-in route catalog; custom collections
   currently require manual selection.
 - Routing picks one collection and does not perform cross-collection ranking.
-- The agent has fixed deterministic intents and cannot plan or use memory.
+- The agent recognizes only six fixed plans and cannot invent plans or use memory.
 
 ## Roadmap
 
 - Configurable routing descriptions for custom collections
 - Evaluated learned routing and cross-collection retrieval strategies
 - Additional explicit agent tools where they add clear user value
-- Conversation memory
+- Optional conversation features only if explicitly designed in a future milestone

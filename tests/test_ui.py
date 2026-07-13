@@ -3,7 +3,14 @@
 import pytest
 
 from app import ui
-from app.agent.models import AgentResponse, Intent, ToolDecision
+from app.agent.models import (
+    AgentPlan,
+    AgentResponse,
+    AgentStep,
+    AgentStepResult,
+    Intent,
+    ToolDecision,
+)
 from app.config import Settings
 from app.services.answering import AnswerResult
 from app.services.routing import RoutingDecision
@@ -80,3 +87,52 @@ def test_unchecked_agent_preserves_existing_streamlit_path(
 
     assert result is expected
     assert captured == [("question", 3, settings, "manual", "project")]
+
+
+def test_streamlit_renders_two_step_agent_results_in_order(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Two-step responses should show plan, routing, and final answer."""
+    routing = RoutingDecision("technical", "Matched technical terms.")
+    answer = _routed_answer()
+    response = AgentResponse(
+        "compound",
+        Intent.ROUTING,
+        ToolDecision("routing", "Routing requested."),
+        answer,
+        AgentPlan(
+            "route_and_ask",
+            (AgentStep("routing"), AgentStep("ask")),
+            "Routing and answer requested.",
+        ),
+        (
+            AgentStepResult("routing", routing),
+            AgentStepResult("ask", answer),
+        ),
+    )
+    events: list[tuple[str, object]] = []
+    monkeypatch.setattr(ui.st, "info", lambda value: events.append(("info", value)))
+    monkeypatch.setattr(
+        ui.st, "subheader", lambda value: events.append(("subheader", value))
+    )
+    monkeypatch.setattr(
+        ui,
+        "_render_routing",
+        lambda value: events.append(("routing", value.collection)),
+    )
+    monkeypatch.setattr(
+        ui,
+        "_render_routed_answer",
+        lambda value, show_routing: events.append(("answer", show_routing)),
+    )
+
+    ui._render_agent_response(response)
+
+    assert events[0][0] == "info"
+    assert "route_and_ask" in str(events[0][1])
+    assert events[1:] == [
+        ("subheader", "Step 1: routing"),
+        ("routing", "technical"),
+        ("subheader", "Step 2: ask"),
+        ("answer", False),
+    ]

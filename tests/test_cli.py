@@ -5,13 +5,20 @@ from pathlib import Path
 import pytest
 
 from app import main as cli
-from app.agent.models import AgentResponse, Intent, ToolDecision
+from app.agent.models import (
+    AgentPlan,
+    AgentResponse,
+    AgentStep,
+    AgentStepResult,
+    Intent,
+    ToolDecision,
+)
 from app.config import ConfigurationError, Settings
 from app.services.answering import AnswerResult
 from app.services.context_builder import AnswerSource
 from app.services.retrieval import RetrievalResponse
 from app.services.routing import RoutingDecision
-from app.services.runtime import RoutedSearch
+from app.services.runtime import RoutedAnswer, RoutedSearch
 
 
 def _answer(with_context: bool = True) -> AnswerResult:
@@ -236,3 +243,44 @@ def test_agent_command_prints_selection_reason_and_result(
     assert "Reason: The request asks for collections." in output
     assert "- general" in output
     assert "- technical" in output
+    assert "Plan:" not in output
+
+
+def test_agent_command_prints_two_step_plan_in_order(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Compound CLI output should show the plan and each safe result."""
+    routing = RoutingDecision("technical", "Matched authentication.", 0.8)
+    answer = RoutedAnswer(_answer(), RoutingDecision("technical", "Explicit."))
+    plan = AgentPlan(
+        "route_and_ask",
+        (AgentStep("routing"), AgentStep("ask")),
+        "The request asks for routing information and a grounded answer.",
+    )
+    response = AgentResponse(
+        "compound",
+        Intent.ROUTING,
+        ToolDecision("routing", "Routing requested."),
+        answer,
+        plan,
+        (
+            AgentStepResult("routing", routing),
+            AgentStepResult("ask", answer),
+        ),
+    )
+
+    class FakeAgent:
+        def run(self, request: str) -> AgentResponse:
+            return response
+
+    monkeypatch.setattr(cli, "get_settings", Settings)
+    monkeypatch.setattr(cli, "build_agent", lambda settings: FakeAgent())
+
+    assert cli.main(["agent", "compound"]) == 0
+    output = capsys.readouterr().out
+    assert "Plan: route_and_ask" in output
+    assert "Step 1: routing" in output
+    assert "Selected collection: technical" in output
+    assert "Step 2: ask" in output
+    assert "Answer:" in output
+    assert output.index("Step 1: routing") < output.index("Step 2: ask")

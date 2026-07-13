@@ -28,6 +28,7 @@ INTENT_RULES: tuple[IntentRule, ...] = (
             r"\bwhich\s+collection\b",
             r"\bwhy\s+(?:general|project|technical|policies)\b",
             r"\broute\s+(?:this|that|the\s+(?:question|request))\b",
+            r"\b(?:explain|show)\s+(?:the\s+)?rout(?:e|ing)\b",
         ),
     ),
     IntentRule(
@@ -36,6 +37,7 @@ INTENT_RULES: tuple[IntentRule, ...] = (
             r"\bsearch\b",
             r"\bfind\b",
             r"\bretrieve\b",
+            r"\bshow\s+(?:the\s+)?(?:matching\s+|relevant\s+)?(?:sources?|chunks?)\b",
         ),
     ),
 )

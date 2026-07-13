@@ -127,16 +127,34 @@ def _run_question(
 
 
 def _render_agent_response(response: AgentResponse) -> None:
-    """Display one selected tool and its structured result."""
-    st.info(
-        f"Selected tool: **{response.decision.tool}**  \n"
-        f"Reason: {response.decision.reason}"
-    )
-    result = response.result
+    """Display one-step behavior or each result in a bounded plan."""
+    if len(response.steps) == 1:
+        st.info(
+            f"Selected tool: **{response.decision.tool}**  \n"
+            f"Reason: {response.decision.reason}"
+        )
+        _render_agent_tool_result(response.result, show_routing=True)
+        return
+
+    plan = response.plan
+    if plan is None:
+        st.error("Agent response is missing its execution plan")
+        return
+    st.info(f"Plan: **{plan.name}**  \nReason: {plan.reason}")
+    for index, step in enumerate(response.steps, start=1):
+        st.subheader(f"Step {index}: {step.tool}")
+        _render_agent_tool_result(
+            step.result, show_routing=step.tool == "routing"
+        )
+
+
+def _render_agent_tool_result(result: object, show_routing: bool) -> None:
+    """Display one safe structured tool result."""
     if isinstance(result, RoutedAnswer):
-        _render_routed_answer(result, show_routing=True)
+        _render_routed_answer(result, show_routing)
     elif isinstance(result, RoutedSearch):
-        _render_routing(result.routing)
+        if show_routing:
+            _render_routing(result.routing)
         st.subheader("Search results")
         if not result.response.results:
             st.write("No relevant results found.")

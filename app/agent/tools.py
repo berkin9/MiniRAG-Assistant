@@ -3,7 +3,7 @@
 from collections.abc import Callable
 from typing import Protocol
 
-from app.agent.models import AgentToolResult
+from app.agent.models import AgentExecutionContext, AgentToolResult
 from app.config import Settings
 from app.services.routing import RoutingDecision
 from app.services.runtime import (
@@ -44,8 +44,19 @@ class AskTool:
 
     def run(self, request: str) -> RoutedAnswer:
         """Answer through exactly one automatically selected collection."""
+        return self.run_with_context(request, AgentExecutionContext())
+
+    def run_with_context(
+        self, request: str, context: AgentExecutionContext
+    ) -> RoutedAnswer:
+        """Reuse a prior routing selection when the bounded plan provides one."""
+        mode = "manual" if context.selected_collection else "automatic"
         return self._runner(
-            request, self._settings.default_top_k, self._settings, "automatic", None
+            request,
+            self._settings.default_top_k,
+            self._settings,
+            mode,
+            context.selected_collection,
         )
 
 
@@ -62,8 +73,19 @@ class SearchTool:
 
     def run(self, request: str) -> RoutedSearch:
         """Retrieve chunks from exactly one automatically selected collection."""
+        return self.run_with_context(request, AgentExecutionContext())
+
+    def run_with_context(
+        self, request: str, context: AgentExecutionContext
+    ) -> RoutedSearch:
+        """Reuse a prior routing selection when the bounded plan provides one."""
+        mode = "manual" if context.selected_collection else "automatic"
         return self._runner(
-            request, self._settings.default_top_k, self._settings, "automatic", None
+            request,
+            self._settings.default_top_k,
+            self._settings,
+            mode,
+            context.selected_collection,
         )
 
 
@@ -94,4 +116,12 @@ class RoutingTool:
 
     def run(self, request: str) -> RoutingDecision:
         """Return the existing router's structured decision."""
-        return self._runner(request, self._settings, "automatic", None)
+        return self.run_with_context(request, AgentExecutionContext())
+
+    def run_with_context(
+        self, request: str, context: AgentExecutionContext
+    ) -> RoutingDecision:
+        """Record one routing decision in the per-run execution context."""
+        decision = self._runner(request, self._settings, "automatic", None)
+        context.selected_collection = decision.collection
+        return decision
