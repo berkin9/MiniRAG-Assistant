@@ -7,6 +7,7 @@ from app.services.llm_providers import (
     GeminiProvider,
     LLMConfigurationError,
     OpenAIProvider,
+    build_agent_planning_provider,
     build_llm_provider,
 )
 
@@ -55,3 +56,23 @@ def test_selected_provider_requires_key_without_leaking_it(provider: str) -> Non
     message = str(captured.value)
     assert "API_KEY" in message
     assert "secret" not in message.lower()
+
+
+def test_planning_provider_uses_isolated_generation_settings() -> None:
+    """Planner limits should not reuse or mutate answer-generation settings."""
+    settings = Settings(
+        llm_provider="openai",
+        openai_api_key="secret-openai",
+        answer_temperature=0.7,
+        max_answer_tokens=900,
+        agent_planning_temperature=0.0,
+        agent_max_planning_tokens=250,
+    )
+
+    provider = build_agent_planning_provider(settings)
+
+    assert isinstance(provider, OpenAIProvider)
+    assert provider._temperature == 0.0
+    assert provider._max_tokens == 250
+    assert settings.answer_temperature == 0.7
+    assert settings.max_answer_tokens == 900

@@ -26,8 +26,12 @@ DEFAULT_RAG_COLLECTION = "general"
 DEFAULT_RAG_COLLECTIONS = ("general", "project", "technical", "policies")
 DEFAULT_RAG_ROUTING_MODE = "deterministic"
 DEFAULT_QUERY_MODE = "manual"
+DEFAULT_AGENT_PLANNING_MODE = "deterministic"
+DEFAULT_AGENT_PLANNING_TEMPERATURE = 0.0
+DEFAULT_AGENT_MAX_PLANNING_TOKENS = 400
 SUPPORTED_RAG_ROUTING_MODES = frozenset({"deterministic", "llm"})
 SUPPORTED_QUERY_MODES = frozenset({"manual", "automatic"})
+SUPPORTED_AGENT_PLANNING_MODES = frozenset({"deterministic", "llm"})
 SUPPORTED_LLM_PROVIDERS = frozenset({"openai", "gemini"})
 SUPPORTED_EXTENSIONS = frozenset({".txt", ".md", ".pdf"})
 
@@ -62,6 +66,9 @@ class Settings:
     rag_collections: tuple[str, ...] = DEFAULT_RAG_COLLECTIONS
     rag_routing_mode: str = DEFAULT_RAG_ROUTING_MODE
     default_query_mode: str = DEFAULT_QUERY_MODE
+    agent_planning_mode: str = DEFAULT_AGENT_PLANNING_MODE
+    agent_planning_temperature: float = DEFAULT_AGENT_PLANNING_TEMPERATURE
+    agent_max_planning_tokens: int = DEFAULT_AGENT_MAX_PLANNING_TOKENS
 
     def __post_init__(self) -> None:
         """Validate chunk settings."""
@@ -127,6 +134,19 @@ class Settings:
             supported = ", ".join(sorted(SUPPORTED_QUERY_MODES))
             raise ConfigurationError(
                 f"DEFAULT_QUERY_MODE must be one of: {supported}"
+            )
+        if self.agent_planning_mode not in SUPPORTED_AGENT_PLANNING_MODES:
+            supported = ", ".join(sorted(SUPPORTED_AGENT_PLANNING_MODES))
+            raise ConfigurationError(
+                f"AGENT_PLANNING_MODE must be one of: {supported}"
+            )
+        if not 0 <= self.agent_planning_temperature <= 2:
+            raise ConfigurationError(
+                "AGENT_PLANNING_TEMPERATURE must be between 0 and 2"
+            )
+        if self.agent_max_planning_tokens <= 0:
+            raise ConfigurationError(
+                "AGENT_MAX_PLANNING_TOKENS must be greater than zero"
             )
 
 
@@ -200,4 +220,13 @@ def get_settings() -> Settings:
         default_query_mode=os.getenv(
             "DEFAULT_QUERY_MODE", DEFAULT_QUERY_MODE
         ).lower(),
+        agent_planning_mode=os.getenv(
+            "AGENT_PLANNING_MODE", DEFAULT_AGENT_PLANNING_MODE
+        ).lower(),
+        agent_planning_temperature=_read_float(
+            "AGENT_PLANNING_TEMPERATURE", DEFAULT_AGENT_PLANNING_TEMPERATURE
+        ),
+        agent_max_planning_tokens=_read_int(
+            "AGENT_MAX_PLANNING_TOKENS", DEFAULT_AGENT_MAX_PLANNING_TOKENS
+        ),
     )

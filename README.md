@@ -122,6 +122,22 @@ calls, reflection, conversation memory, or background work. The layer uses no
 agent framework: LangChain, LangGraph, CrewAI, AutoGen, and similar frameworks
 are intentionally absent.
 
+### Agent planning strategies
+
+The planning layer now has a common interface with two implementations:
+
+- `DeterministicAgentPlanner` wraps the existing intent, tool, and fixed-plan
+  selection rules without changing their behavior.
+- `LLMAgentPlanner` uses the configured OpenAI or Gemini text provider to
+  produce JSON, then validates it as a bounded `AgentDecision` with one or two
+  registered tool steps.
+
+`AGENT_PLANNING_MODE` defaults to `deterministic`. In Sprint 1, `llm` mode is an
+isolated planning capability only: it can generate and validate a structured
+decision, but the CLI, Streamlit UI, and agent executor do not invoke or execute
+LLM-generated plans yet. There is no fallback, retry, retrieval, or answer
+generation inside the planner.
+
 The application keeps document loading, chunking, hashing, embedding, vector
 storage, retrieval, prompt construction, provider SDKs, uploads, and UI code in
 separate focused modules. Neither LangChain nor LlamaIndex is used.
@@ -134,6 +150,7 @@ separate focused modules. Neither LangChain nor LlamaIndex is used.
 - ChromaDB
 - OpenAI Python SDK using the Responses API
 - Google Gen AI Python SDK
+- Pydantic
 - Streamlit
 - pytest
 
@@ -186,6 +203,9 @@ by the CLI or Streamlit interface.
 | `RAG_COLLECTIONS` | `general,project,technical,policies` | Streamlit/listed choices |
 | `DEFAULT_QUERY_MODE` | `manual` | Default question mode: `manual` or `automatic` |
 | `RAG_ROUTING_MODE` | `deterministic` | Automatic strategy: `deterministic` or `llm` |
+| `AGENT_PLANNING_MODE` | `deterministic` | Structured planning strategy: `deterministic` or `llm` |
+| `AGENT_PLANNING_TEMPERATURE` | `0.0` | LLM planner generation temperature, from 0 to 2 |
+| `AGENT_MAX_PLANNING_TOKENS` | `400` | Maximum tokens for one structured planner response |
 | `DEFAULT_TOP_K` | `4` | Maximum retrieved context chunks |
 | `MAX_RETRIEVAL_DISTANCE` | `1.2` | Largest accepted cosine distance |
 | `LLM_PROVIDER` | `openai` | `openai` or `gemini` |
@@ -329,6 +349,7 @@ streamlit run app/ui.py
 
 ```bash
 pytest -q
+pytest -q tests/test_agent_planner.py
 ```
 
 Tests use temporary directories, deterministic embeddings, fake providers, and
@@ -337,8 +358,9 @@ download an embedding model. Coverage includes existing ingestion/indexing,
 provider selection, deterministic and LLM-routing validation/fallback,
 single-collection runtime orchestration, bounded plan validation and execution,
 routing-context reuse, agent intent and tool selection, grounded prompts,
-citations, failure short-circuiting, CLI dispatch, Streamlit orchestration, safe
-uploads, duplicate uploads, and persistent vector storage.
+structured deterministic/LLM planner validation, citations, failure
+short-circuiting, CLI dispatch, Streamlit orchestration, safe uploads, duplicate
+uploads, and persistent vector storage.
 
 ## Local data, privacy, and cost
 
@@ -374,10 +396,13 @@ separately from the configured `UPLOAD_DIR` after verifying the path.
   currently require manual selection.
 - Routing picks one collection and does not perform cross-collection ranking.
 - The agent recognizes only six fixed plans and cannot invent plans or use memory.
+- LLM-generated agent decisions are validated but are not connected to tool
+  execution in Sprint 1.
 
 ## Roadmap
 
 - Configurable routing descriptions for custom collections
 - Evaluated learned routing and cross-collection retrieval strategies
+- Controlled integration of validated LLM decisions with bounded execution
 - Additional explicit agent tools where they add clear user value
 - Optional conversation features only if explicitly designed in a future milestone

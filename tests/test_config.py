@@ -106,3 +106,42 @@ def test_invalid_routing_configuration(
 
     with pytest.raises(ConfigurationError, match=message):
         get_settings()
+
+
+def test_agent_planning_defaults_are_deterministic(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Sprint 1 must not opt existing agent execution into LLM planning."""
+    monkeypatch.delenv("AGENT_PLANNING_MODE", raising=False)
+
+    settings = get_settings()
+
+    assert settings.agent_planning_mode == "deterministic"
+    assert settings.agent_planning_temperature == 0.0
+    assert settings.agent_max_planning_tokens == 400
+
+
+@pytest.mark.parametrize(
+    ("name", "value", "message"),
+    [
+        ("AGENT_PLANNING_MODE", "hybrid", "AGENT_PLANNING_MODE must be one of"),
+        (
+            "AGENT_PLANNING_TEMPERATURE",
+            "2.1",
+            "AGENT_PLANNING_TEMPERATURE must be between 0 and 2",
+        ),
+        (
+            "AGENT_MAX_PLANNING_TOKENS",
+            "0",
+            "AGENT_MAX_PLANNING_TOKENS must be greater than zero",
+        ),
+    ],
+)
+def test_invalid_agent_planning_configuration(
+    monkeypatch: pytest.MonkeyPatch, name: str, value: str, message: str
+) -> None:
+    """Planner configuration errors should name the invalid setting."""
+    monkeypatch.setenv(name, value)
+
+    with pytest.raises(ConfigurationError, match=message):
+        get_settings()

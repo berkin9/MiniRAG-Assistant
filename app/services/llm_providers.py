@@ -122,10 +122,30 @@ class GeminiProvider:
 
 def build_llm_provider(settings: Settings) -> LLMProvider:
     """Build the configured provider without importing or creating an SDK client."""
+    return _build_selected_provider(
+        settings,
+        temperature=settings.answer_temperature,
+        max_tokens=settings.max_answer_tokens,
+    )
+
+
+def build_agent_planning_provider(settings: Settings) -> LLMProvider:
+    """Build a low-creativity provider adapter for isolated agent planning."""
+    return _build_selected_provider(
+        settings,
+        temperature=settings.agent_planning_temperature,
+        max_tokens=settings.agent_max_planning_tokens,
+    )
+
+
+def _build_selected_provider(
+    settings: Settings, temperature: float, max_tokens: int
+) -> LLMProvider:
+    """Build the selected SDK adapter with task-specific generation limits."""
     common = {
         "model": settings.llm_model,
-        "temperature": settings.answer_temperature,
-        "max_tokens": settings.max_answer_tokens,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
         "timeout": settings.request_timeout,
     }
     if settings.llm_provider == "openai":
