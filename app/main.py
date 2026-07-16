@@ -3,6 +3,7 @@
 import argparse
 import logging
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 from app.agent import (
@@ -13,6 +14,13 @@ from app.agent import (
 from app.agent.decision_adapter import AgentExecutionPreparationError
 from app.agent.planning_service import AgentPlanningServiceError
 from app.config import ConfigurationError, Settings, get_settings
+from app.evaluation.benchmark import (
+    DEFAULT_DATASET_PATH,
+    format_benchmark_report,
+    run_benchmark,
+)
+from app.evaluation.dataset import EvaluationDatasetError
+from app.evaluation.report import write_csv_report, write_json_report
 from app.services.answering import AnswerGenerationError, AnswerResult
 from app.services.document_loader import DocumentLoadError
 from app.services.embeddings import EmbeddingError, EmbeddingService
@@ -71,6 +79,32 @@ def build_parser() -> argparse.ArgumentParser:
         "agent", help="Select and run a bounded agent plan"
     )
     agent_parser.add_argument("request", help="Request for the agent to handle")
+    benchmark_parser = subparsers.add_parser(
+        "benchmark", help="Evaluate agent planning without executing tools"
+    )
+    benchmark_parser.add_argument(
+        "--dataset",
+        type=Path,
+        default=DEFAULT_DATASET_PATH,
+        help="Evaluation dataset JSON path",
+    )
+    benchmark_parser.add_argument(
+        "--planner",
+        choices=("deterministic", "llm"),
+        help="Override AGENT_PLANNING_MODE for this benchmark",
+    )
+    benchmark_parser.add_argument(
+        "--json",
+        type=Path,
+        dest="json_report",
+        help="Write a machine-readable JSON report",
+    )
+    benchmark_parser.add_argument(
+        "--csv",
+        type=Path,
+        dest="csv_report",
+        help="Write per-case CSV results",
+    )
     return parser
 
 
@@ -230,6 +264,27 @@ def _run_agent(request: str, settings: Settings) -> None:
         )
 
 
+def _run_benchmark_command(
+    settings: Settings,
+    dataset: Path,
+    planner: str | None = None,
+    json_report: Path | None = None,
+    csv_report: Path | None = None,
+) -> None:
+    """Evaluate planning only and optionally write JSON or CSV reports."""
+    benchmark_settings = (
+        replace(settings, agent_planning_mode=planner) if planner else settings
+    )
+    report = run_benchmark(benchmark_settings, dataset)
+    print(format_benchmark_report(report))
+    if json_report is not None:
+        write_json_report(report, json_report)
+        print(f"JSON report: {json_report}")
+    if csv_report is not None:
+        write_csv_report(report, csv_report)
+        print(f"CSV report: {csv_report}")
+
+
 def _print_agent_planning(result: PlannedAgentResult) -> None:
     """Print safe planner metadata without raw provider details."""
     planning = result.planning
@@ -316,11 +371,20 @@ def main(argv: list[str] | None = None) -> int:
             _run_route(args.question, settings)
         elif args.command == "agent":
             _run_agent(args.request, settings)
+        elif args.command == "benchmark":
+            _run_benchmark_command(
+                settings,
+                args.dataset,
+                args.planner,
+                args.json_report,
+                args.csv_report,
+            )
     except (
         ConfigurationError,
         DirectoryNotFoundError,
         DocumentLoadError,
         EmbeddingError,
+        EvaluationDatasetError,
         AnswerGenerationError,
         IndexingError,
         AgentExecutionPreparationError,

@@ -156,6 +156,7 @@ def test_low_confidence_decision_uses_safe_deterministic_fallback() -> None:
     assert "0.42" in (result.fallback_reason or "")
     assert "0.60" in (result.fallback_reason or "")
     assert result.policy_rejection_reason == result.fallback_reason
+    assert result.primary_decision == primary.outcome
 
 
 def test_agent_planning_error_uses_deterministic_fallback() -> None:

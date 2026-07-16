@@ -1,0 +1,88 @@
+{
+  "cases": [
+    {
+      "id": "ask_001",
+      "query": "How is authentication implemented?",
+      "expected_plan": "ask",
+      "expected_tools": ["ask"],
+      "description": "A normal grounded question should use answering."
+    },
+    {
+      "id": "ask_002",
+      "query": "Explain the deployment process.",
+      "expected_plan": "ask",
+      "expected_tools": ["ask"],
+      "description": "Unmatched explanatory requests default to answering."
+    },
+    {
+      "id": "search_001",
+      "query": "Find authentication chunks.",
+      "expected_plan": "search",
+      "expected_tools": ["search"],
+      "description": "Explicit find language requests semantic retrieval."
+    },
+    {
+      "id": "search_002",
+      "query": "Retrieve relevant chunks about token storage.",
+      "expected_plan": "search",
+      "expected_tools": ["search"],
+      "description": "Explicit retrieval language requests semantic search."
+    },
+    {
+      "id": "collections_001",
+      "query": "List collections.",
+      "expected_plan": "collections",
+      "expected_tools": ["collections"],
+      "description": "Collection listing should use the registry tool."
+    },
+    {
+      "id": "collections_002",
+      "query": "Show the collections.",
+      "expected_plan": "collections",
+      "expected_tools": ["collections"],
+      "description": "A second collection-listing phrasing tests consistency."
+    },
+    {
+      "id": "routing_001",
+      "query": "Which collection handles authentication?",
+      "expected_plan": "routing",
+      "expected_tools": ["routing"],
+      "description": "Routing inspection should not retrieve or answer."
+    },
+    {
+      "id": "routing_002",
+      "query": "Explain the routing.",
+      "expected_plan": "routing",
+      "expected_tools": ["routing"],
+      "description": "An explicit routing explanation remains one step."
+    },
+    {
+      "id": "route_ask_001",
+      "query": "Explain the routing, then answer: how is authentication implemented?",
+      "expected_plan": "route_and_ask",
+      "expected_tools": ["routing", "ask"],
+      "description": "A clear compound request routes before grounded answering."
+    },
+    {
+      "id": "route_ask_002",
+      "query": "Which collection handles authentication, and what do the documents say?",
+      "expected_plan": "route_and_ask",
+      "expected_tools": ["routing", "ask"],
+      "description": "Collection inspection plus document answering uses two steps."
+    },
+    {
+      "id": "route_search_001",
+      "query": "Route this question and retrieve the matching chunks: how are refresh tokens stored?",
+      "expected_plan": "route_and_search",
+      "expected_tools": ["routing", "search"],
+      "description": "A clear compound request routes before retrieval."
+    },
+    {
+      "id": "route_search_002",
+      "query": "Show the routing and show the matching sources: where are access tokens stored?",
+      "expected_plan": "route_and_search",
+      "expected_tools": ["routing", "search"],
+      "description": "Routing inspection plus matching sources uses two steps."
+    }
+  ]
+}

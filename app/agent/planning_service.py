@@ -95,6 +95,7 @@ class AgentPlanningService:
             return self._fallback(
                 query,
                 reason,
+                primary_decision=decision,
                 policy_rejection_reason=reason,
             )
 
@@ -145,6 +146,7 @@ class AgentPlanningService:
         query: str,
         reason: str,
         primary_error: Exception | None = None,
+        primary_decision: AgentDecision | None = None,
         policy_rejection_reason: str | None = None,
     ) -> AgentPlanningResult:
         """Use one deterministic fallback or raise when it is unavailable."""
@@ -184,6 +186,7 @@ class AgentPlanningService:
             fallback_reason=reason,
             primary_error_type=primary_error_type,
             policy_rejection_reason=policy_rejection_reason,
+            primary_decision=primary_decision,
         )
         logger.info(
             "agent_planning_fallback_used requested_strategy=llm "

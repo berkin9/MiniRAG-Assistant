@@ -103,6 +103,7 @@ class AgentPlanningResult(BaseModel):
     fallback_reason: str | None = None
     primary_error_type: str | None = None
     policy_rejection_reason: str | None = None
+    primary_decision: AgentDecision | None = None
 
     @model_validator(mode="after")
     def validate_fallback_metadata(self) -> "AgentPlanningResult":
@@ -125,4 +126,9 @@ class AgentPlanningResult(BaseModel):
             raise ValueError("primary_error_type requires fallback_used=true")
         elif self.policy_rejection_reason is not None:
             raise ValueError("policy_rejection_reason requires fallback_used=true")
+        if (
+            self.primary_decision is not None
+            and self.requested_strategy != "llm"
+        ):
+            raise ValueError("primary_decision is only valid for LLM planning")
         return self

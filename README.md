@@ -20,6 +20,7 @@ context and lets the application show where its answer came from.
 - User-selected logical RAG collections backed by isolated Chroma collections
 - Manual or automatic single-collection query routing with explainable decisions
 - Optional bounded agent that executes one or two predefined tools
+- Planning-only agent benchmark with JSON/CSV reports and Streamlit metrics
 - Deterministic, network-free tests using injected fakes
 
 No fine-tuning is performed. Embeddings and ChromaDB run locally. During answer
@@ -163,6 +164,51 @@ same path. Once tool execution starts, failures short-circuit the plan without
 retrying or replanning. Each request makes at most one planning LLM call and
 executes at most two tools; an `ask` step may make its separate final-answer LLM
 call.
+
+## Agent planning benchmark
+
+Sprint 4 adds a read-only benchmark around `AgentPlanningService`. It measures
+planning only and never invokes the agent tool executor, retrieval, embeddings,
+or answer generation. The default deterministic benchmark is fully offline:
+
+```bash
+python -m app.main benchmark
+python -m app.main benchmark --planner deterministic
+python -m app.main benchmark --planner llm
+python -m app.main benchmark --json reports/agent-benchmark.json
+python -m app.main benchmark --csv reports/agent-benchmark.csv
+python -m app.main benchmark --dataset benchmarks/agent_planning.json
+```
+
+LLM benchmarks use the existing provider configuration and may incur provider
+requests. Each case makes at most one planning LLM call; fallback remains the
+existing single deterministic fallback. Benchmark reports include plan/tool
+accuracy, confidence statistics and calibration bands, fallback rate,
+planning-only latency, planner-call counts, plan distribution, and all
+misclassifications. Tool executions are explicitly reported as zero.
+
+The dataset at `benchmarks/agent_planning.json` is normal JSON. Add a unique case
+using the registered plan and exact registered tool sequence:
+
+```json
+{
+  "id": "search_003",
+  "query": "Find the release notes.",
+  "expected_plan": "search",
+  "expected_tools": ["search"],
+  "description": "Explicit retrieval request"
+}
+```
+
+The loader rejects duplicate IDs, unknown plans or tools, and mismatched plan
+sequences before evaluation. One failing planner case is recorded by safe error
+type and does not stop later cases. Exported JSON and CSV include benchmark
+queries but never raw prompts, provider responses, credentials, or stack traces.
+
+When running `streamlit run app/ui.py`, Streamlit also discovers the separate
+**Benchmark** page in `app/pages/benchmark.py`. It can run either configured
+planner, display summary metrics, confidence calibration and plan distribution,
+and download JSON or CSV without changing the existing RAG page.
 
 The application keeps document loading, chunking, hashing, embedding, vector
 storage, retrieval, prompt construction, provider SDKs, uploads, and UI code in
@@ -384,6 +430,7 @@ pytest -q
 pytest -q tests/test_agent_planner.py
 pytest -q tests/test_agent_planning_service.py
 pytest -q tests/test_agent_decision_adapter.py tests/test_planned_agent.py
+pytest -q tests/test_agent_evaluator.py tests/test_benchmark_exports_cli.py
 ```
 
 Tests use temporary directories, deterministic embeddings, fake providers, and
@@ -395,13 +442,16 @@ routing-context reuse, agent intent and tool selection, grounded prompts,
 structured deterministic/LLM planner validation, policy acceptance, safe
 deterministic fallback, decision adaptation, exact planned execution order,
 routing-context reuse, failure short-circuiting without replanning, citations,
-CLI dispatch, Streamlit orchestration, safe uploads, duplicate uploads, and
+benchmark datasets and metrics, planning-only latency, JSON/CSV exports, CLI
+dispatch, Streamlit orchestration, safe uploads, duplicate uploads, and
 persistent vector storage.
 
 ## Local data, privacy, and cost
 
 - Source documents, upload content, model caches, `.env`, and `.chroma` data are
   excluded from Git.
+- Benchmark exports contain the human-authored evaluation queries; review them
+  before sharing reports.
 - Document parsing, embeddings, hashing, and vector search happen locally.
 - Only retrieved chunks and the user's question are sent to OpenAI or Gemini
   when `ask` is used.
@@ -442,5 +492,6 @@ separately from the configured `UPLOAD_DIR` after verifying the path.
 - Configurable routing descriptions for custom collections
 - Evaluated learned routing and cross-collection retrieval strategies
 - ✅ Sprint 3: controlled execution of validated decisions through one bounded executor
+- ✅ Sprint 4: planning evaluation, observability, and benchmark exports
 - Additional explicit agent tools where they add clear user value
 - Optional conversation features only if explicitly designed in a future milestone
