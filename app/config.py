@@ -33,9 +33,20 @@ DEFAULT_AGENT_MAX_PLANNING_TOKENS = 400
 DEFAULT_AGENT_MIN_PLANNING_CONFIDENCE = 0.60
 DEFAULT_AGENT_MAX_STEPS = HARD_AGENT_MAX_STEPS
 DEFAULT_AGENT_PLANNING_FALLBACK_ENABLED = True
+DEFAULT_RAG_RETRIEVAL_STRATEGY = "single_collection"
+DEFAULT_MULTIRAG_MAX_COLLECTIONS = 3
+DEFAULT_MULTIRAG_TOP_K_PER_COLLECTION = 3
+DEFAULT_MULTIRAG_GLOBAL_TOP_K = 6
+DEFAULT_MULTIRAG_DEDUPLICATION_ENABLED = True
+DEFAULT_MULTIRAG_MIN_SELECTION_CONFIDENCE = 0.60
+HARD_MULTIRAG_TOP_K_PER_COLLECTION = 20
+HARD_MULTIRAG_GLOBAL_TOP_K = 50
 SUPPORTED_RAG_ROUTING_MODES = frozenset({"deterministic", "llm"})
 SUPPORTED_QUERY_MODES = frozenset({"manual", "automatic"})
 SUPPORTED_AGENT_PLANNING_MODES = frozenset({"deterministic", "llm"})
+SUPPORTED_RAG_RETRIEVAL_STRATEGIES = frozenset(
+    {"single_collection", "cross_collection"}
+)
 SUPPORTED_LLM_PROVIDERS = frozenset({"openai", "gemini"})
 SUPPORTED_EXTENSIONS = frozenset({".txt", ".md", ".pdf"})
 
@@ -77,6 +88,16 @@ class Settings:
     agent_max_steps: int = DEFAULT_AGENT_MAX_STEPS
     agent_planning_fallback_enabled: bool = (
         DEFAULT_AGENT_PLANNING_FALLBACK_ENABLED
+    )
+    rag_retrieval_strategy: str = DEFAULT_RAG_RETRIEVAL_STRATEGY
+    multirag_max_collections: int = DEFAULT_MULTIRAG_MAX_COLLECTIONS
+    multirag_top_k_per_collection: int = DEFAULT_MULTIRAG_TOP_K_PER_COLLECTION
+    multirag_global_top_k: int = DEFAULT_MULTIRAG_GLOBAL_TOP_K
+    multirag_deduplication_enabled: bool = (
+        DEFAULT_MULTIRAG_DEDUPLICATION_ENABLED
+    )
+    multirag_min_selection_confidence: float = (
+        DEFAULT_MULTIRAG_MIN_SELECTION_CONFIDENCE
     )
 
     def __post_init__(self) -> None:
@@ -134,6 +155,38 @@ class Settings:
             self, "default_rag_collection", registry.default_collection
         )
         object.__setattr__(self, "rag_collections", registry.list_collections())
+        if self.rag_retrieval_strategy not in SUPPORTED_RAG_RETRIEVAL_STRATEGIES:
+            supported = ", ".join(sorted(SUPPORTED_RAG_RETRIEVAL_STRATEGIES))
+            raise ConfigurationError(
+                f"RAG_RETRIEVAL_STRATEGY must be one of: {supported}"
+            )
+        if self.multirag_max_collections < 1:
+            raise ConfigurationError("MULTIRAG_MAX_COLLECTIONS must be at least 1")
+        if self.multirag_max_collections > len(registry.list_collections()):
+            raise ConfigurationError(
+                "MULTIRAG_MAX_COLLECTIONS cannot exceed the number of "
+                "registered collections"
+            )
+        if self.multirag_top_k_per_collection < 1:
+            raise ConfigurationError(
+                "MULTIRAG_TOP_K_PER_COLLECTION must be at least 1"
+            )
+        if self.multirag_top_k_per_collection > HARD_MULTIRAG_TOP_K_PER_COLLECTION:
+            raise ConfigurationError(
+                "MULTIRAG_TOP_K_PER_COLLECTION cannot exceed the hard limit of "
+                f"{HARD_MULTIRAG_TOP_K_PER_COLLECTION}"
+            )
+        if self.multirag_global_top_k < 1:
+            raise ConfigurationError("MULTIRAG_GLOBAL_TOP_K must be at least 1")
+        if self.multirag_global_top_k > HARD_MULTIRAG_GLOBAL_TOP_K:
+            raise ConfigurationError(
+                "MULTIRAG_GLOBAL_TOP_K cannot exceed the hard limit of "
+                f"{HARD_MULTIRAG_GLOBAL_TOP_K}"
+            )
+        if not 0 <= self.multirag_min_selection_confidence <= 1:
+            raise ConfigurationError(
+                "MULTIRAG_MIN_SELECTION_CONFIDENCE must be between 0 and 1"
+            )
         if self.rag_routing_mode not in SUPPORTED_RAG_ROUTING_MODES:
             supported = ", ".join(sorted(SUPPORTED_RAG_ROUTING_MODES))
             raise ConfigurationError(
@@ -269,5 +322,26 @@ def get_settings() -> Settings:
         agent_planning_fallback_enabled=_read_bool(
             "AGENT_PLANNING_FALLBACK_ENABLED",
             DEFAULT_AGENT_PLANNING_FALLBACK_ENABLED,
+        ),
+        rag_retrieval_strategy=os.getenv(
+            "RAG_RETRIEVAL_STRATEGY", DEFAULT_RAG_RETRIEVAL_STRATEGY
+        ).lower(),
+        multirag_max_collections=_read_int(
+            "MULTIRAG_MAX_COLLECTIONS", DEFAULT_MULTIRAG_MAX_COLLECTIONS
+        ),
+        multirag_top_k_per_collection=_read_int(
+            "MULTIRAG_TOP_K_PER_COLLECTION",
+            DEFAULT_MULTIRAG_TOP_K_PER_COLLECTION,
+        ),
+        multirag_global_top_k=_read_int(
+            "MULTIRAG_GLOBAL_TOP_K", DEFAULT_MULTIRAG_GLOBAL_TOP_K
+        ),
+        multirag_deduplication_enabled=_read_bool(
+            "MULTIRAG_DEDUPLICATION_ENABLED",
+            DEFAULT_MULTIRAG_DEDUPLICATION_ENABLED,
+        ),
+        multirag_min_selection_confidence=_read_float(
+            "MULTIRAG_MIN_SELECTION_CONFIDENCE",
+            DEFAULT_MULTIRAG_MIN_SELECTION_CONFIDENCE,
         ),
     )

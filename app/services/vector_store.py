@@ -20,6 +20,7 @@ class VectorSearchResult:
     text: str
     metadata: dict[str, ChromaValue]
     distance: float
+    chunk_id: str = ""
 
 
 def normalize_metadata(metadata: ChunkMetadata) -> dict[str, ChromaValue]:
@@ -98,14 +99,16 @@ class ChromaVectorStore:
             documents = (response.get("documents") or [[]])[0]
             metadatas = (response.get("metadatas") or [[]])[0]
             distances = (response.get("distances") or [[]])[0]
+            ids = (response.get("ids") or [[]])[0]
             results = [
                 VectorSearchResult(
                     text=str(text),
                     metadata=dict(metadata or {}),
                     distance=float(distance),
+                    chunk_id=str(chunk_id),
                 )
-                for text, metadata, distance in zip(
-                    documents, metadatas, distances, strict=True
+                for text, metadata, distance, chunk_id in zip(
+                    documents, metadatas, distances, ids, strict=True
                 )
             ]
             return sorted(results, key=lambda result: result.distance)

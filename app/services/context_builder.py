@@ -19,6 +19,9 @@ class AnswerSource:
     distance: float
     text_preview: str
     collection: str = "general"
+    matched_collections: tuple[str, ...] = ()
+    normalized_score: float | None = None
+    global_rank: int | None = None
 
 
 @dataclass(frozen=True)
@@ -30,7 +33,9 @@ class GroundedContext:
 
 
 def build_context(
-    results: tuple[RetrievalResult, ...], max_characters: int
+    results: tuple[RetrievalResult, ...],
+    max_characters: int,
+    include_collections: bool = False,
 ) -> GroundedContext:
     """Build ranked, deduplicated source blocks within a character budget."""
     if max_characters <= 0:
@@ -47,7 +52,9 @@ def build_context(
         if location in seen_locations or normalized_text in seen_text:
             continue
         label = f"Source {len(sources) + 1}"
-        block = _format_source_block(label, result, normalized_text)
+        block = _format_source_block(
+            label, result, normalized_text, include_collections
+        )
         if blocks and used_characters + len(block) > max_characters:
             break
         if not blocks and len(block) > max_characters:
@@ -67,16 +74,26 @@ def build_context(
                 distance=result.distance,
                 text_preview=" ".join(normalized_text.split())[:240],
                 collection=result.collection,
+                matched_collections=result.matched_collections
+                or (result.collection,),
+                normalized_score=result.normalized_score,
+                global_rank=result.global_rank,
             )
         )
     return GroundedContext(text="\n\n".join(blocks), sources=tuple(sources))
 
 
 def _format_source_block(
-    label: str, result: RetrievalResult, content: str
+    label: str,
+    result: RetrievalResult,
+    content: str,
+    include_collections: bool = False,
 ) -> str:
     """Format one stable prompt source block."""
     lines = [f"[{label}]", f"File: {Path(result.source_file).name}"]
+    if include_collections:
+        collections = result.matched_collections or (result.collection,)
+        lines.append(f"Collections: {', '.join(collections)}")
     if result.page_number:
         lines.append(f"Page: {result.page_number}")
     lines.extend([f"Chunk: {result.chunk_index}", "Content:", content])

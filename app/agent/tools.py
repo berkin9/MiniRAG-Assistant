@@ -43,20 +43,24 @@ class AskTool:
         self._runner = runner
 
     def run(self, request: str) -> RoutedAnswer:
-        """Answer through exactly one automatically selected collection."""
+        """Answer through the configured bounded retrieval strategy."""
         return self.run_with_context(request, AgentExecutionContext())
 
     def run_with_context(
         self, request: str, context: AgentExecutionContext
     ) -> RoutedAnswer:
         """Reuse a prior routing selection when the bounded plan provides one."""
-        mode = "manual" if context.selected_collection else "automatic"
+        cross_collection = (
+            self._settings.rag_retrieval_strategy == "cross_collection"
+        )
+        selected = None if cross_collection else context.selected_collection
+        mode = "manual" if selected else "automatic"
         return self._runner(
             request,
             self._settings.default_top_k,
             self._settings,
             mode,
-            context.selected_collection,
+            selected,
         )
 
 
@@ -72,20 +76,24 @@ class SearchTool:
         self._runner = runner
 
     def run(self, request: str) -> RoutedSearch:
-        """Retrieve chunks from exactly one automatically selected collection."""
+        """Retrieve chunks through the configured bounded strategy."""
         return self.run_with_context(request, AgentExecutionContext())
 
     def run_with_context(
         self, request: str, context: AgentExecutionContext
     ) -> RoutedSearch:
         """Reuse a prior routing selection when the bounded plan provides one."""
-        mode = "manual" if context.selected_collection else "automatic"
+        cross_collection = (
+            self._settings.rag_retrieval_strategy == "cross_collection"
+        )
+        selected = None if cross_collection else context.selected_collection
+        mode = "manual" if selected else "automatic"
         return self._runner(
             request,
             self._settings.default_top_k,
             self._settings,
             mode,
-            context.selected_collection,
+            selected,
         )
 
 

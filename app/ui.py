@@ -1,6 +1,7 @@
 """Thin Streamlit interface for indexing and grounded questions."""
 
 from collections.abc import Sequence
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -15,6 +16,11 @@ from app.agent import (
 from app.agent.planning_service import AgentPlanningServiceError
 from app.config import ConfigurationError, Settings, get_settings
 from app.services.answering import AnswerGenerationError, AnswerResult
+from app.services.collection_selection import CollectionSelectionResult
+from app.services.cross_collection import (
+    CrossCollectionRetrievalError,
+    CrossCollectionRetrievalResponse,
+)
 from app.services.embeddings import EmbeddingError
 from app.services.llm_providers import LLMProviderError
 from app.services.retrieval import RetrievalResult
@@ -39,6 +45,7 @@ _REQUEST_ERRORS = (
     LLMProviderError,
     PlannedAgentExecutionError,
     VectorStoreError,
+    CrossCollectionRetrievalError,
     ValueError,
 )
 
@@ -66,12 +73,29 @@ def main() -> None:
             options=registry.list_collections(),
             index=registry.list_collections().index(registry.default_collection),
         )
+        retrieval_strategy_label = st.radio(
+            "Retrieval strategy",
+            options=("Single collection", "Cross collection"),
+            index=0
+            if settings.rag_retrieval_strategy == "single_collection"
+            else 1,
+        )
+        cross_collection = retrieval_strategy_label == "Cross collection"
         query_mode_label = st.radio(
-            "Query mode",
+            "Collection selection" if cross_collection else "Query mode",
             options=("Manual collection", "Automatic routing"),
             index=0 if settings.default_query_mode == "manual" else 1,
         )
         automatic_routing = query_mode_label == "Automatic routing"
+        selected_collections: tuple[str, ...] | None = None
+        if cross_collection and not automatic_routing:
+            manual_collections = st.multiselect(
+                "Collections",
+                options=registry.list_collections(),
+                default=(selected_collection,),
+                max_selections=settings.multirag_max_collections,
+            )
+            selected_collections = tuple(manual_collections)
         use_agent = st.checkbox("Use Agent", value=False)
         if use_agent:
             st.caption(
@@ -112,10 +136,16 @@ def main() -> None:
     if st.session_state[_PROCESSING_KEY]:
         _process_submission(
             question,
-            settings,
+            replace(
+                settings,
+                rag_retrieval_strategy=(
+                    "cross_collection" if cross_collection else "single_collection"
+                ),
+            ),
             selected_collection,
             automatic_routing,
             use_agent,
+            selected_collections,
         )
         st.rerun()
     _render_saved_submission(automatic_routing)
@@ -147,6 +177,7 @@ def _process_submission(
     selected_collection: str,
     automatic_routing: bool,
     use_agent: bool,
+    selected_collections: tuple[str, ...] | None = None,
 ) -> None:
     """Run one guarded request and save its displayable outcome."""
     try:
@@ -157,6 +188,7 @@ def _process_submission(
                 selected_collection,
                 automatic_routing,
                 use_agent,
+                selected_collections,
             )
     except _REQUEST_ERRORS as error:
         st.session_state[_ERROR_KEY] = str(error)
@@ -189,16 +221,31 @@ def _run_question(
     selected_collection: str,
     automatic_routing: bool,
     use_agent: bool,
+    selected_collections: tuple[str, ...] | None = None,
 ) -> PlannedAgentResult | RoutedAnswer:
     """Keep normal answering unchanged unless agent mode is selected."""
     if use_agent:
         return build_planned_agent_service(settings).run(question)
+    collection = (
+        None
+        if automatic_routing or selected_collections is not None
+        else selected_collection
+    )
+    if selected_collections is None:
+        return answer_with_routing(
+            question,
+            settings.default_top_k,
+            settings,
+            "automatic" if automatic_routing else "manual",
+            collection,
+        )
     return answer_with_routing(
         question,
         settings.default_top_k,
         settings,
-        "automatic" if automatic_routing else "manual",
-        None if automatic_routing else selected_collection,
+        "manual",
+        None,
+        collections=selected_collections,
     )
 
 
@@ -248,13 +295,22 @@ def _render_agent_tool_result(result: object, show_routing: bool) -> None:
     if isinstance(result, RoutedAnswer):
         _render_routed_answer(result, show_routing)
     elif isinstance(result, RoutedSearch):
-        if show_routing:
+        if result.selection is not None:
+            _render_selection(result.selection)
+            if isinstance(result.response, CrossCollectionRetrievalResponse):
+                _render_cross_retrieval_metadata(result.response)
+        elif show_routing:
             _render_routing(result.routing)
         st.subheader("Search results")
         if not result.response.results:
             st.write("No relevant results found.")
         for match in result.response.results:
-            _render_search_result(match)
+            _render_search_result(
+                match,
+                show_collection=isinstance(
+                    result.response, CrossCollectionRetrievalResponse
+                ),
+            )
     elif isinstance(result, RoutingDecision):
         _render_routing(result)
     else:
@@ -265,7 +321,11 @@ def _render_agent_tool_result(result: object, show_routing: bool) -> None:
 
 def _render_routed_answer(routed: RoutedAnswer, show_routing: bool) -> None:
     """Display an existing grounded answer without changing its content."""
-    if show_routing:
+    if routed.selection is not None:
+        _render_selection(routed.selection)
+        if routed.retrieval is not None:
+            _render_cross_retrieval_metadata(routed.retrieval)
+    elif show_routing:
         _render_routing(routed.routing)
     _render_answer(routed.answer)
 
@@ -282,6 +342,34 @@ def _render_routing(decision: RoutingDecision) -> None:
     st.info(details)
 
 
+def _render_selection(selection: CollectionSelectionResult) -> None:
+    """Display safe automatic or manual multi-collection selection metadata."""
+    details = (
+        f"Selected collections: **{', '.join(selection.collections)}**  \n"
+        f"Strategy: **{selection.strategy}**"
+    )
+    if selection.confidence is not None:
+        details += f"  \nConfidence: {selection.confidence:.2f}"
+    if selection.fallback_used:
+        details += "  \nFallback used: **yes**"
+    st.info(details)
+
+
+def _render_cross_retrieval_metadata(
+    response: CrossCollectionRetrievalResponse,
+) -> None:
+    """Display bounded per-collection and fusion counts."""
+    counts = ", ".join(
+        f"{name}: {response.results_per_collection[name]}"
+        for name in response.selected_collections
+    )
+    st.caption(
+        f"Results per collection — {counts}. Candidates: "
+        f"{response.total_candidates}; duplicates removed: "
+        f"{response.duplicate_removal_count}; returned: {response.returned_results}."
+    )
+
+
 def _render_answer(result: AnswerResult) -> None:
     """Display an answer and its existing source presentation."""
     st.subheader("Answer")
@@ -290,20 +378,28 @@ def _render_answer(result: AnswerResult) -> None:
         with st.expander("Sources", expanded=True):
             for source in result.sources:
                 page = f" · Page {source.page_number}" if source.page_number else ""
+                collection = (
+                    f" · Collections {', '.join(source.matched_collections)}"
+                    if result.selected_collections
+                    else ""
+                )
                 st.markdown(
                     f"**[{source.label}] {Path(source.source_file).name}**"
-                    f"{page}  \n"
+                    f"{page}{collection}  \n"
                     f"Chunk {source.chunk_index} · "
                     f"Distance {source.distance:.4f}"
                 )
                 st.caption(source.text_preview)
 
 
-def _render_search_result(result: RetrievalResult) -> None:
+def _render_search_result(
+    result: RetrievalResult, show_collection: bool = False
+) -> None:
     """Display one retrieved chunk with source metadata."""
     page = f" · Page {result.page_number}" if result.page_number else ""
+    prefix = f"{result.collection} — " if show_collection else ""
     st.markdown(
-        f"**{Path(result.source_file).name}**{page}  \n"
+        f"**{prefix}{Path(result.source_file).name}**{page}  \n"
         f"Chunk {result.chunk_index} · Distance {result.distance:.4f}"
     )
     st.caption(result.text)

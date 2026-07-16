@@ -1,7 +1,7 @@
 """Grounded answer orchestration over semantic retrieval."""
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from app.services.context_builder import AnswerSource, build_context
 from app.services.llm_providers import LLMProvider, LLMRequestError
@@ -27,6 +27,8 @@ class AnswerResult:
     sources: tuple[AnswerSource, ...]
     has_relevant_context: bool
     collection: str = "general"
+    selected_collections: tuple[str, ...] = ()
+    results_per_collection: dict[str, int] = field(default_factory=dict)
 
 
 def answer_question(
@@ -46,25 +48,56 @@ def answer_question(
     retrieval = retrieve(
         question, top_k, max_distance, embedder, vector_store, collection
     )
-    if not retrieval.results:
-        return _no_context_result(retrieval)
+    return answer_from_retrieval(
+        retrieval,
+        max_context_characters,
+        provider_factory,
+    )
 
-    context = build_context(retrieval.results, max_context_characters)
+
+def answer_from_retrieval(
+    retrieval: RetrievalResponse,
+    max_context_characters: int,
+    provider_factory: Callable[[], LLMProvider],
+    *,
+    system_prompt: str = GROUNDED_SYSTEM_PROMPT,
+    include_collections: bool = False,
+    selected_collections: tuple[str, ...] = (),
+    results_per_collection: dict[str, int] | None = None,
+) -> AnswerResult:
+    """Generate one grounded answer from an already bounded retrieval response."""
+    if not retrieval.results:
+        empty = _no_context_result(retrieval)
+        return AnswerResult(
+            **{
+                **empty.__dict__,
+                "selected_collections": selected_collections,
+                "results_per_collection": results_per_collection or {},
+            }
+        )
+
+    context = build_context(
+        retrieval.results,
+        max_context_characters,
+        include_collections=include_collections,
+    )
     user_prompt = (
         "Use only the context below to answer the question. Cite sources using "
         "their exact labels.\n\n"
-        f"Context:\n{context.text}\n\nQuestion:\n{question.strip()}"
+        f"Context:\n{context.text}\n\nQuestion:\n{retrieval.query.strip()}"
     )
     try:
-        answer = provider_factory().generate(GROUNDED_SYSTEM_PROMPT, user_prompt)
+        answer = provider_factory().generate(system_prompt, user_prompt)
     except LLMRequestError as error:
         raise AnswerGenerationError("The selected LLM provider request failed") from error
     return AnswerResult(
-        question=question.strip(),
+        question=retrieval.query.strip(),
         answer=answer,
         sources=context.sources,
         has_relevant_context=True,
         collection=retrieval.collection,
+        selected_collections=selected_collections,
+        results_per_collection=results_per_collection or {},
     )
 
 

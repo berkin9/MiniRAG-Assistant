@@ -19,6 +19,7 @@ context and lets the application show where its answer came from.
 - Streamlit uploads, indexing status, questions, answers, and expandable sources
 - User-selected logical RAG collections backed by isolated Chroma collections
 - Manual or automatic single-collection query routing with explainable decisions
+- Optional bounded cross-collection retrieval, deduplication, and evidence fusion
 - Optional bounded agent that executes one or two predefined tools
 - Planning-only agent benchmark with JSON/CSV reports and Streamlit metrics
 - Deterministic, network-free tests using injected fakes
@@ -73,7 +74,62 @@ Optional LLM routing requests strict JSON containing one allowed collection,
 a reason, and confidence. The question is marked as untrusted prompt data and
 the result is validated against configured collection names. Provider errors,
 malformed output, and unknown names visibly fall back to deterministic routing.
-Neither strategy searches multiple collections or combines their results.
+Single-collection routing remains the default. Cross-collection Multi-RAG is a
+separate configured retrieval strategy; it can select and search several
+registered collections for one request.
+
+## Cross-collection Multi-RAG
+
+Set `RAG_RETRIEVAL_STRATEGY=cross_collection` to opt into Sprint 5. Existing
+users retain `single_collection` by default, including the original retrieval
+ordering, manual selection, routing, citations, and `DEFAULT_TOP_K` behavior.
+
+```text
+Query
+  ↓
+Bounded collection selector
+  ↓
+Collection A retrieval ─┐
+Collection B retrieval ─┼─→ normalization → deduplication → RRF fusion
+Collection C retrieval ─┘
+  ↓
+Global top evidence
+  ↓
+Grounded answer
+```
+
+Manual mode accepts up to `MULTIRAG_MAX_COLLECTIONS` registered names.
+Automatic mode reuses the centralized route terms and selects every matching
+route in deterministic score order, capped by the same limit. Optional LLM
+selection makes one strict-JSON provider call, validates every name and bound,
+and falls back once to deterministic selection after provider errors, malformed
+output, unknown names, excessive selections, or low confidence. The LLM cannot
+provide vector filters, retrieval limits, embeddings, or arbitrary tool inputs.
+
+Each selected logical collection resolves through the existing registry to its
+own physical Chroma collection and is searched exactly once. Chroma returns
+cosine distance, where lower is better. Cross-collection results convert it to
+the monotonic relevance score `1 / (1 + distance)`, where higher is better.
+Distances must be finite and non-negative.
+
+Exact duplicates are detected by stable chunk ID, normalized document/page/
+chunk location, or a SHA-256 hash of whitespace-normalized text. The strongest
+candidate is retained and all matching collection names remain on its source.
+Deduplication can be disabled. Reciprocal Rank Fusion uses `1 / (60 + rank)`;
+duplicate contributions are summed, followed by normalized relevance and
+stable file/page/chunk/ID tie-breakers. Only `MULTIRAG_GLOBAL_TOP_K` evidence
+chunks reach the grounded answer prompt.
+
+An empty collection is not an error. An expected retrieval failure is recorded
+by safe error type while other collections continue; the request fails only if
+every selected collection fails. There are no retries. Fused citations include
+their collection, and duplicate sources list every matched collection.
+
+The separate human-editable dataset
+`benchmarks/multirag_retrieval.json` measures collection exact match, precision,
+recall, relevant-document recall at global K, duplicates removed, candidate
+counts, and retrieval latency. These retrieval metrics remain separate from
+the Sprint 4 planner benchmark and use fake selectors/stores in automated tests.
 
 ## Bounded Multi-Step Agent
 
@@ -275,6 +331,12 @@ by the CLI or Streamlit interface.
 | `RAG_COLLECTIONS` | `general,project,technical,policies` | Streamlit/listed choices |
 | `DEFAULT_QUERY_MODE` | `manual` | Default question mode: `manual` or `automatic` |
 | `RAG_ROUTING_MODE` | `deterministic` | Automatic strategy: `deterministic` or `llm` |
+| `RAG_RETRIEVAL_STRATEGY` | `single_collection` | `single_collection` or bounded `cross_collection` |
+| `MULTIRAG_MAX_COLLECTIONS` | `3` | Maximum registered collections searched per request |
+| `MULTIRAG_TOP_K_PER_COLLECTION` | `3` | Candidate limit for each selected collection |
+| `MULTIRAG_GLOBAL_TOP_K` | `6` | Evidence limit after deduplication and fusion |
+| `MULTIRAG_DEDUPLICATION_ENABLED` | `true` | Enable exact cross-collection duplicate removal |
+| `MULTIRAG_MIN_SELECTION_CONFIDENCE` | `0.60` | Minimum accepted LLM multi-selection confidence |
 | `AGENT_PLANNING_MODE` | `deterministic` | Structured planning strategy: `deterministic` or `llm` |
 | `AGENT_PLANNING_TEMPERATURE` | `0.0` | LLM planner generation temperature, from 0 to 2 |
 | `AGENT_MAX_PLANNING_TOKENS` | `400` | Maximum tokens for one structured planner response |
@@ -320,6 +382,10 @@ python -m app.main search "What is the project deadline?"
 python -m app.main search "What is the project deadline?" --top-k 2
 python -m app.main search "How is authentication implemented?" --collection technical
 python -m app.main search "How is authentication implemented?" --auto-route
+RAG_RETRIEVAL_STRATEGY=cross_collection python -m app.main search \
+  "Compare authentication and security policy" --auto-route
+RAG_RETRIEVAL_STRATEGY=cross_collection python -m app.main search \
+  "Compare authentication and security policy" --collections technical,policies
 ```
 
 Ask a grounded question:
@@ -329,6 +395,8 @@ python -m app.main ask "What is the project deadline?"
 python -m app.main ask "What is the project deadline?" --top-k 4
 python -m app.main ask "What is the project deadline?" --collection project
 python -m app.main ask "What is the project deadline?" --auto-route
+RAG_RETRIEVAL_STRATEGY=cross_collection python -m app.main ask \
+  "Compare authentication and security policy" --collections technical,policies
 ```
 
 Inspect an automatic routing decision without searching or answering:
@@ -360,11 +428,11 @@ Agent commands print safe planning strategy, confidence, fallback metadata, and
 the existing tool output. Single-step commands retain the selected-tool output;
 compound commands print the plan and both ordered step results.
 
-Omitting both query flags uses `DEFAULT_QUERY_MODE`, which defaults to manual
-selection of `DEFAULT_RAG_COLLECTION`. `--collection` and `--auto-route` are
-mutually exclusive. Other safe logical names are accepted manually from the CLI
-even when they are not listed in `RAG_COLLECTIONS`; configured choices primarily
-make the UI and listing command deterministic.
+Omitting all query flags uses `DEFAULT_QUERY_MODE`, which defaults to manual
+selection of `DEFAULT_RAG_COLLECTION`. `--collection`, `--collections`, and
+`--auto-route` are mutually exclusive. Cross-collection lists must contain
+registered names and cannot exceed the configured maximum. The original
+single-collection CLI behavior is unchanged.
 
 Automatic commands print their selected collection, strategy, reason, and
 confidence before results. For example:
@@ -404,6 +472,14 @@ uploads or indexing. One-step results retain the existing display. Two-step
 results show the selected plan, routing step, and final answer or retrieved
 chunks in order. Safe planning and fallback metadata appears in an expandable
 details section.
+
+The retrieval-strategy control also allows **Cross collection**. Its manual
+mode uses a bounded multiselect; automatic mode shows selected collections,
+strategy, confidence, fallback state, per-collection counts, candidates,
+duplicates removed, and fused result count. Fused sources carry collection
+labels. Upload behavior, indexing collection, agent step bounds, and the
+separate Benchmark page are unchanged.
+
 Uploaded files are sanitized, content-addressed, and saved
 under `UPLOAD_DIR`; repeated content is skipped through the same SHA-256 logic as
 the CLI. The main area accepts questions and displays the answer plus expandable
@@ -431,6 +507,8 @@ pytest -q tests/test_agent_planner.py
 pytest -q tests/test_agent_planning_service.py
 pytest -q tests/test_agent_decision_adapter.py tests/test_planned_agent.py
 pytest -q tests/test_agent_evaluator.py tests/test_benchmark_exports_cli.py
+pytest -q tests/test_multirag_config_selection.py tests/test_cross_collection_retrieval.py
+pytest -q tests/test_multirag_answer_runtime.py tests/test_multirag_evaluation.py
 ```
 
 Tests use temporary directories, deterministic embeddings, fake providers, and
@@ -442,7 +520,9 @@ routing-context reuse, agent intent and tool selection, grounded prompts,
 structured deterministic/LLM planner validation, policy acceptance, safe
 deterministic fallback, decision adaptation, exact planned execution order,
 routing-context reuse, failure short-circuiting without replanning, citations,
-benchmark datasets and metrics, planning-only latency, JSON/CSV exports, CLI
+benchmark datasets and metrics, planning-only latency, JSON/CSV exports,
+bounded multi-collection selection, score normalization, fusion,
+deduplication, partial failures, separate retrieval-quality evaluation, CLI
 dispatch, Streamlit orchestration, safe uploads, duplicate uploads, and
 persistent vector storage.
 
@@ -478,9 +558,10 @@ separately from the configured `UPLOAD_DIR` after verifying the path.
 - Citations identify supporting chunks but are not independently fact-checked.
 - V1 has no authentication, conversation memory, hybrid keyword search, or
   streaming answer output.
-- Automatic routing uses a small built-in route catalog; custom collections
+- Automatic selection uses a small built-in route catalog; custom collections
   currently require manual selection.
-- Routing picks one collection and does not perform cross-collection ranking.
+- Cross-collection retrieval uses exact deduplication and deterministic RRF,
+  not learned reranking or semantic near-duplicate detection.
 - The agent supports only six fixed registered plans and at most two sequential
   execution steps.
 - It cannot invent tools, modify application-owned tool arguments, retry or
@@ -490,8 +571,8 @@ separately from the configured `UPLOAD_DIR` after verifying the path.
 ## Roadmap
 
 - Configurable routing descriptions for custom collections
-- Evaluated learned routing and cross-collection retrieval strategies
 - ✅ Sprint 3: controlled execution of validated decisions through one bounded executor
 - ✅ Sprint 4: planning evaluation, observability, and benchmark exports
+- ✅ Sprint 5: bounded cross-collection retrieval, fusion, and evaluation
 - Additional explicit agent tools where they add clear user value
 - Optional conversation features only if explicitly designed in a future milestone

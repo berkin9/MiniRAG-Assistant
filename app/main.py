@@ -22,6 +22,10 @@ from app.evaluation.benchmark import (
 from app.evaluation.dataset import EvaluationDatasetError
 from app.evaluation.report import write_csv_report, write_json_report
 from app.services.answering import AnswerGenerationError, AnswerResult
+from app.services.cross_collection import (
+    CrossCollectionRetrievalError,
+    CrossCollectionRetrievalResponse,
+)
 from app.services.document_loader import DocumentLoadError
 from app.services.embeddings import EmbeddingError, EmbeddingService
 from app.services.indexing import IndexingError, index_directory, index_document
@@ -60,6 +64,10 @@ def build_parser() -> argparse.ArgumentParser:
     search_mode = search_parser.add_mutually_exclusive_group()
     search_mode.add_argument("--collection", help="Logical RAG collection")
     search_mode.add_argument(
+        "--collections",
+        help="Comma-separated bounded collection list for cross-collection mode",
+    )
+    search_mode.add_argument(
         "--auto-route", action="store_true", help="Route the query automatically"
     )
     ask_parser = subparsers.add_parser("ask", help="Ask a grounded question")
@@ -67,6 +75,10 @@ def build_parser() -> argparse.ArgumentParser:
     ask_parser.add_argument("--top-k", type=int, help="Maximum context chunks")
     ask_mode = ask_parser.add_mutually_exclusive_group()
     ask_mode.add_argument("--collection", help="Logical RAG collection")
+    ask_mode.add_argument(
+        "--collections",
+        help="Comma-separated bounded collection list for cross-collection mode",
+    )
     ask_mode.add_argument(
         "--auto-route", action="store_true", help="Route the question automatically"
     )
@@ -167,12 +179,25 @@ def _run_search(
     settings: Settings,
     query_mode: str = "manual",
     collection: str | None = None,
+    collections: tuple[str, ...] | None = None,
 ) -> None:
     """Search the persistent index and print readable matches."""
-    routed: RoutedSearch = search_with_settings(
-        query, top_k, settings, query_mode, collection
-    )
-    if routed.routing.strategy != "manual":
+    if collections is None:
+        routed = search_with_settings(
+            query, top_k, settings, query_mode, collection
+        )
+    else:
+        routed = search_with_settings(
+            query,
+            top_k,
+            settings,
+            query_mode,
+            collection,
+            collections=collections,
+        )
+    if routed.selection is not None:
+        _print_selection(routed.selection)
+    elif routed.routing.strategy != "manual":
         _print_routing(routed.routing)
     _print_search_response(routed)
 
@@ -180,15 +205,28 @@ def _run_search(
 def _print_search_response(routed: RoutedSearch) -> None:
     """Print readable matches from a structured routed search."""
     response = routed.response
+    if isinstance(response, CrossCollectionRetrievalResponse):
+        _print_cross_collection_metadata(response)
     if not response.results:
         print("No relevant results found.")
         return
     for rank, result in enumerate(response.results, start=1):
         page = f", page {result.page_number}" if result.page_number else ""
         preview = " ".join(result.text.split())[:200]
+        collection_prefix = (
+            f"{result.collection} — "
+            if isinstance(response, CrossCollectionRetrievalResponse)
+            else ""
+        )
+        score = (
+            f", relevance {result.normalized_score:.4f}"
+            if result.normalized_score is not None
+            else ""
+        )
         print(
-            f"{rank}. {result.source_file}{page}, chunk {result.chunk_index}, "
-            f"distance {result.distance:.4f}\n   {preview}"
+            f"{rank}. {collection_prefix}{result.source_file}{page}, "
+            f"chunk {result.chunk_index}, distance {result.distance:.4f}{score}\n"
+            f"   {preview}"
         )
 
 
@@ -200,8 +238,13 @@ def _print_answer(result: AnswerResult) -> None:
     print("\nSources:")
     for source in result.sources:
         page = f", page {source.page_number}" if source.page_number else ""
+        collections = (
+            f"{', '.join(source.matched_collections or (source.collection,))} — "
+            if result.selected_collections
+            else ""
+        )
         print(
-            f"- [{source.label}] {Path(source.source_file).name}{page}, "
+            f"- [{source.label}] {collections}{Path(source.source_file).name}{page}, "
             f"chunk {source.chunk_index}, distance {source.distance:.4f}"
         )
 
@@ -212,16 +255,65 @@ def _run_ask(
     settings: Settings,
     query_mode: str = "manual",
     collection: str | None = None,
+    collections: tuple[str, ...] | None = None,
 ) -> None:
     """Generate and print an answer grounded in indexed chunks."""
-    if query_mode == "manual":
+    if (
+        settings.rag_retrieval_strategy == "single_collection"
+        and query_mode == "manual"
+        and collections is None
+    ):
         _print_answer(ask_with_settings(question, top_k, settings, collection))
         return
-    routed = answer_with_routing(
-        question, top_k, settings, query_mode, collection
-    )
-    _print_routing(routed.routing)
+    if collections is None:
+        routed = answer_with_routing(
+            question, top_k, settings, query_mode, collection
+        )
+    else:
+        routed = answer_with_routing(
+            question,
+            top_k,
+            settings,
+            query_mode,
+            collection,
+            collections=collections,
+        )
+    if routed.selection is not None:
+        _print_selection(routed.selection)
+        if routed.retrieval is not None:
+            _print_cross_collection_metadata(routed.retrieval)
+    else:
+        _print_routing(routed.routing)
     _print_answer(routed.answer)
+
+
+def _print_selection(selection: object) -> None:
+    """Print bounded multi-collection selection metadata."""
+    from app.services.collection_selection import CollectionSelectionResult
+
+    if not isinstance(selection, CollectionSelectionResult):
+        return
+    print("Selected collections:")
+    for name in selection.collections:
+        print(f"- {name}")
+    print(f"Selection strategy: {selection.strategy}")
+    if selection.confidence is not None:
+        print(f"Selection confidence: {selection.confidence:.2f}")
+    if selection.fallback_used:
+        print("Selection fallback used: yes")
+
+
+def _print_cross_collection_metadata(
+    response: CrossCollectionRetrievalResponse,
+) -> None:
+    """Print safe cross-collection candidate and fusion counts."""
+    if response.selection:
+        print("Results per collection:")
+        for collection in response.selected_collections:
+            print(f"- {collection}: {response.results_per_collection[collection]}")
+    print(f"Candidates before fusion: {response.total_candidates}")
+    print(f"Duplicates removed: {response.duplicate_removal_count}")
+    print(f"Global results: {response.returned_results}")
 
 
 def _run_collections(settings: Settings) -> None:
@@ -342,6 +434,16 @@ def _resolve_query_mode(
     return settings.default_query_mode
 
 
+def _parse_collections(value: str | None) -> tuple[str, ...] | None:
+    """Parse a comma-separated CLI collection list without normalizing silently."""
+    if value is None:
+        return None
+    collections = tuple(name.strip() for name in value.split(",") if name.strip())
+    if not collections:
+        raise ValueError("--collections must include at least one collection")
+    return collections
+
+
 def main(argv: list[str] | None = None) -> int:
     """Run the selected command and return its exit status."""
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
@@ -359,12 +461,38 @@ def main(argv: list[str] | None = None) -> int:
             _run_index(args.path or settings.data_dir, settings, args.collection)
         elif args.command == "search":
             top_k = args.top_k if args.top_k is not None else settings.default_top_k
-            mode = _resolve_query_mode(args.auto_route, args.collection, settings)
-            _run_search(args.query, top_k, settings, mode, args.collection)
+            collections = _parse_collections(args.collections)
+            mode = _resolve_query_mode(
+                args.auto_route, args.collection or args.collections, settings
+            )
+            if collections is None:
+                _run_search(args.query, top_k, settings, mode, args.collection)
+            else:
+                _run_search(
+                    args.query,
+                    top_k,
+                    settings,
+                    mode,
+                    args.collection,
+                    collections,
+                )
         elif args.command == "ask":
             top_k = args.top_k if args.top_k is not None else settings.default_top_k
-            mode = _resolve_query_mode(args.auto_route, args.collection, settings)
-            _run_ask(args.question, top_k, settings, mode, args.collection)
+            collections = _parse_collections(args.collections)
+            mode = _resolve_query_mode(
+                args.auto_route, args.collection or args.collections, settings
+            )
+            if collections is None:
+                _run_ask(args.question, top_k, settings, mode, args.collection)
+            else:
+                _run_ask(
+                    args.question,
+                    top_k,
+                    settings,
+                    mode,
+                    args.collection,
+                    collections,
+                )
         elif args.command == "collections":
             _run_collections(settings)
         elif args.command == "route":
@@ -392,6 +520,7 @@ def main(argv: list[str] | None = None) -> int:
         PlannedAgentExecutionError,
         LLMProviderError,
         VectorStoreError,
+        CrossCollectionRetrievalError,
         OSError,
         UnicodeError,
         ValueError,

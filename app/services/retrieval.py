@@ -37,6 +37,13 @@ class RetrievalResult:
     document_hash: str
     distance: float
     collection: str = "general"
+    chunk_id: str = ""
+    normalized_score: float | None = None
+    fusion_score: float | None = None
+    rank_within_collection: int | None = None
+    global_rank: int | None = None
+    matched_collections: tuple[str, ...] = ()
+    raw_score: float | None = None
 
 
 @dataclass(frozen=True)
@@ -67,7 +74,7 @@ def retrieve(
 
     matches = vector_store.search(embedder.embed_query(query), top_k)
     results = tuple(
-        _to_retrieval_result(match, logical_collection)
+        to_retrieval_result(match, logical_collection)
         for match in sorted(matches, key=lambda item: item.distance)
         if match.distance <= max_distance
     )
@@ -76,7 +83,7 @@ def retrieve(
     )
 
 
-def _to_retrieval_result(
+def to_retrieval_result(
     match: VectorSearchResult, collection: str
 ) -> RetrievalResult:
     """Map normalized vector metadata into the retrieval domain model."""
@@ -90,4 +97,6 @@ def _to_retrieval_result(
         document_hash=str(match.metadata["document_hash"]),
         distance=match.distance,
         collection=str(match.metadata.get("rag_collection", collection)),
+        chunk_id=match.chunk_id,
+        matched_collections=(collection,),
     )
