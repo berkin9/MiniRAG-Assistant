@@ -47,10 +47,18 @@ BUILTIN_COLLECTION_ROUTES: tuple[CollectionRoute, ...] = (
     ),
     CollectionRoute(
         "project",
-        "Project plans, deadlines, milestones, responsibilities, and status.",
+        "Project plans, releases, deadlines, milestones, sponsors, and status.",
         (
+            "production release",
+            "release date",
+            "planned release",
+            "target date",
+            "due date",
+            "project status",
+            "delivery date",
             "deadline",
             "milestone",
+            "sponsor",
             "roadmap",
             "delivery",
             "project",
@@ -75,8 +83,20 @@ BUILTIN_COLLECTION_ROUTES: tuple[CollectionRoute, ...] = (
     ),
     CollectionRoute(
         "policies",
-        "Company rules, procedures, compliance, security, privacy, and regulations.",
+        "Company rules, access controls, data handling, compliance, and regulations.",
         (
+            "access tokens in logs",
+            "tokens appear in logs",
+            "must not contain",
+            "is it allowed",
+            "retention period",
+            "deletion request",
+            "access review",
+            "access be reviewed",
+            "access reviewed",
+            "personal data",
+            "incident reporting",
+            "policy requirement",
             "policy",
             "procedure",
             "compliance",
@@ -115,7 +135,7 @@ class DeterministicQueryRouter(QueryRouter):
                 for keyword in route.keywords
                 if _contains_term(normalized_question, keyword.casefold())
             )
-            score = sum(2 if " " in keyword else 1 for keyword in matched)
+            score = sum(_term_weight(keyword) for keyword in matched)
             scores.append((score, route, matched))
 
         best_score, best_route, matched = max(
@@ -198,6 +218,11 @@ def build_query_router(
 def _contains_term(question: str, keyword: str) -> bool:
     """Match a keyword or phrase on non-word boundaries."""
     return bool(re.search(rf"(?<!\w){re.escape(keyword)}(?!\w)", question))
+
+
+def _term_weight(keyword: str) -> int:
+    """Favor specific phrases over ambiguous individual words."""
+    return max(1, len(keyword.split()))
 
 
 _LLM_ROUTER_SYSTEM_PROMPT = """You are a collection router, not an answer assistant.

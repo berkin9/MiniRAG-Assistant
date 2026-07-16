@@ -37,8 +37,14 @@ def _registry(*collections: str) -> CollectionRegistry:
     ("question", "expected"),
     [
         ("When is the project deadline?", "project"),
+        ("When is the planned production release?", "project"),
+        ("Who is the project sponsor?", "project"),
+        ("Can access tokens appear in logs?", "policies"),
+        ("How often must access be reviewed?", "policies"),
+        ("How is authentication implemented?", "technical"),
         ("How is authentication implemented in the API?", "technical"),
         ("What is the GDPR privacy policy?", "policies"),
+        ("What color is the cover?", "general"),
     ],
 )
 def test_deterministic_routes_specialized_questions(
