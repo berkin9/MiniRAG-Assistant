@@ -3,6 +3,7 @@
 import re
 from dataclasses import dataclass
 
+from app.agent.definitions import AGENT_PLAN_INPUT_MODES, SUPPORTED_AGENT_PLANS
 from app.agent.models import AgentPlan, AgentStep, ToolDecision
 
 
@@ -61,15 +62,12 @@ class PlanSelector:
             ):
                 return AgentPlan(
                     rule.name,
-                    (
-                        AgentStep("routing", "extracted_question"),
-                        AgentStep(rule.final_tool, "extracted_question"),
-                    ),
+                    _registered_steps(rule.name),
                     rule.reason,
                 )
         return AgentPlan(
             single_tool.tool,
-            (AgentStep(single_tool.tool),),
+            _registered_steps(single_tool.tool),
             single_tool.reason,
         )
 
@@ -97,3 +95,15 @@ def extract_question(request: str) -> str:
 def _matches_any(text: str, patterns: tuple[str, ...]) -> bool:
     """Return whether any centralized compound signal matches."""
     return any(re.search(pattern, text) for pattern in patterns)
+
+
+def _registered_steps(plan_name: str) -> tuple[AgentStep, ...]:
+    """Build steps from the application-owned plan input mapping."""
+    return tuple(
+        AgentStep(tool, input_mode)
+        for tool, input_mode in zip(
+            SUPPORTED_AGENT_PLANS[plan_name],
+            AGENT_PLAN_INPUT_MODES[plan_name],
+            strict=True,
+        )
+    )

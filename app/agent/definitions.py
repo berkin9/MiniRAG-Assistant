@@ -11,3 +11,19 @@ SUPPORTED_AGENT_PLANS: dict[str, tuple[str, ...]] = {
     "route_and_ask": ("routing", "ask"),
     "route_and_search": ("routing", "search"),
 }
+AGENT_PLAN_INPUT_MODES: dict[str, tuple[str, ...]] = {
+    "ask": ("original_request",),
+    "search": ("original_request",),
+    "collections": ("original_request",),
+    "routing": ("original_request",),
+    "route_and_ask": ("extracted_question", "extracted_question"),
+    "route_and_search": ("extracted_question", "extracted_question"),
+}
+AGENT_PLAN_RESULT_INTENTS: dict[str, str] = {
+    "ask": "ask",
+    "search": "search",
+    "collections": "collections",
+    "routing": "routing",
+    "route_and_ask": "routing",
+    "route_and_search": "routing",
+}

@@ -13,6 +13,12 @@ from app.agent.models import (
     Intent,
     ToolDecision,
 )
+from app.agent.planner_models import (
+    AgentDecision,
+    AgentPlanningResult,
+    AgentPlanningStep,
+)
+from app.agent.planned_agent import PlannedAgentResult
 from app.config import ConfigurationError, Settings
 from app.services.answering import AnswerResult
 from app.services.context_builder import AnswerSource
@@ -42,6 +48,33 @@ def _answer(with_context: bool = True) -> AnswerResult:
         sources=(source,) if with_context else (),
         has_relevant_context=with_context,
     )
+
+
+def _planned(
+    response: AgentResponse,
+    *,
+    requested: str = "deterministic",
+    used: str = "deterministic",
+    fallback: bool = False,
+) -> PlannedAgentResult:
+    plan = response.plan
+    assert plan is not None
+    planning = AgentPlanningResult(
+        decision=AgentDecision(
+            intent=response.intent.value,
+            selected_plan=plan.name,
+            steps=tuple(
+                AgentPlanningStep(tool=step.tool) for step in plan.steps
+            ),
+            reason=plan.reason,
+            confidence=1.0,
+        ),
+        requested_strategy=requested,
+        used_strategy=used,
+        fallback_used=fallback,
+        fallback_reason="Safe fallback reason." if fallback else None,
+    )
+    return PlannedAgentResult(planning, response)
 
 
 def test_ask_command_prints_answer_and_sources(
@@ -230,15 +263,22 @@ def test_agent_command_prints_selection_reason_and_result(
     )
 
     class FakeAgent:
-        def run(self, request: str) -> AgentResponse:
+        def run(self, request: str) -> PlannedAgentResult:
             assert request == "list collections"
-            return response
+            return _planned(response)
 
     monkeypatch.setattr(cli, "get_settings", Settings)
-    monkeypatch.setattr(cli, "build_agent", lambda settings: FakeAgent())
+    monkeypatch.setattr(
+        cli,
+        "build_planned_agent_service",
+        lambda settings: FakeAgent(),
+    )
 
     assert cli.main(["agent", "list collections"]) == 0
     output = capsys.readouterr().out
+    assert "Planning requested: deterministic" in output
+    assert "Planning used: deterministic" in output
+    assert "Selected plan: collections" in output
     assert "Selected tool: collections" in output
     assert "Reason: The request asks for collections." in output
     assert "- general" in output
@@ -270,17 +310,59 @@ def test_agent_command_prints_two_step_plan_in_order(
     )
 
     class FakeAgent:
-        def run(self, request: str) -> AgentResponse:
-            return response
+        def run(self, request: str) -> PlannedAgentResult:
+            return _planned(response)
 
     monkeypatch.setattr(cli, "get_settings", Settings)
-    monkeypatch.setattr(cli, "build_agent", lambda settings: FakeAgent())
+    monkeypatch.setattr(
+        cli,
+        "build_planned_agent_service",
+        lambda settings: FakeAgent(),
+    )
 
     assert cli.main(["agent", "compound"]) == 0
     output = capsys.readouterr().out
     assert "Plan: route_and_ask" in output
+    assert "Selected plan: route_and_ask" in output
     assert "Step 1: routing" in output
     assert "Selected collection: technical" in output
     assert "Step 2: ask" in output
     assert "Answer:" in output
     assert output.index("Step 1: routing") < output.index("Step 2: ask")
+
+
+def test_agent_command_prints_safe_fallback_metadata(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """CLI should show fallback status without raw provider details."""
+    response = AgentResponse(
+        "list collections",
+        Intent.COLLECTIONS,
+        ToolDecision("collections", "List configured collections."),
+        ("general", "technical"),
+    )
+
+    class FakeAgent:
+        def run(self, request: str) -> PlannedAgentResult:
+            return _planned(
+                response,
+                requested="llm",
+                used="deterministic",
+                fallback=True,
+            )
+
+    monkeypatch.setattr(cli, "get_settings", Settings)
+    monkeypatch.setattr(
+        cli,
+        "build_planned_agent_service",
+        lambda settings: FakeAgent(),
+    )
+
+    assert cli.main(["agent", "list collections"]) == 0
+    output = capsys.readouterr().out
+    assert "Planning requested: llm" in output
+    assert "Planning used: deterministic" in output
+    assert "Fallback used: yes" in output
+    assert "Fallback reason: Safe fallback reason." in output
+    assert "raw provider" not in output

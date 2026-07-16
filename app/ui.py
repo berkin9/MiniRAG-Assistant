@@ -6,7 +6,13 @@ from typing import Any
 
 import streamlit as st
 
-from app.agent import AgentResponse, build_agent
+from app.agent import (
+    AgentResponse,
+    PlannedAgentExecutionError,
+    PlannedAgentResult,
+    build_planned_agent_service,
+)
+from app.agent.planning_service import AgentPlanningServiceError
 from app.config import ConfigurationError, Settings, get_settings
 from app.services.answering import AnswerGenerationError, AnswerResult
 from app.services.embeddings import EmbeddingError
@@ -28,8 +34,10 @@ _OUTCOME_KEY = "request_outcome"
 _ERROR_KEY = "request_error"
 _REQUEST_ERRORS = (
     AnswerGenerationError,
+    AgentPlanningServiceError,
     EmbeddingError,
     LLMProviderError,
+    PlannedAgentExecutionError,
     VectorStoreError,
     ValueError,
 )
@@ -67,7 +75,7 @@ def main() -> None:
         use_agent = st.checkbox("Use Agent", value=False)
         if use_agent:
             st.caption(
-                "The agent selects one tool. Uploads still use the indexing "
+                "The agent selects one bounded plan. Uploads still use the indexing "
                 f"collection **{selected_collection}**."
             )
         elif automatic_routing:
@@ -167,7 +175,9 @@ def _render_saved_submission(automatic_routing: bool) -> None:
         st.error(error)
         return
     outcome = st.session_state.get(_OUTCOME_KEY)
-    if isinstance(outcome, AgentResponse):
+    if isinstance(outcome, PlannedAgentResult):
+        _render_planned_agent_result(outcome)
+    elif isinstance(outcome, AgentResponse):
         _render_agent_response(outcome)
     elif isinstance(outcome, RoutedAnswer):
         _render_routed_answer(outcome, automatic_routing)
@@ -179,10 +189,10 @@ def _run_question(
     selected_collection: str,
     automatic_routing: bool,
     use_agent: bool,
-) -> AgentResponse | RoutedAnswer:
+) -> PlannedAgentResult | RoutedAnswer:
     """Keep normal answering unchanged unless agent mode is selected."""
     if use_agent:
-        return build_agent(settings).run(question)
+        return build_planned_agent_service(settings).run(question)
     return answer_with_routing(
         question,
         settings.default_top_k,
@@ -190,6 +200,25 @@ def _run_question(
         "automatic" if automatic_routing else "manual",
         None if automatic_routing else selected_collection,
     )
+
+
+def _render_planned_agent_result(result: PlannedAgentResult) -> None:
+    """Keep tool output prominent and show safe planning details separately."""
+    _render_agent_response(result.execution)
+    planning = result.planning
+    with st.expander("Agent planning details"):
+        details = (
+            f"Requested strategy: **{planning.requested_strategy}**  \n"
+            f"Used strategy: **{planning.used_strategy}**  \n"
+            f"Selected plan: **{planning.decision.selected_plan}**  \n"
+            f"Confidence: **{planning.decision.confidence:.2f}**  \n"
+            f"Reason: {planning.decision.reason}  \n"
+            f"Fallback used: **{'yes' if planning.fallback_used else 'no'}**  \n"
+            f"Executed tools: **{', '.join(result.executed_tools)}**"
+        )
+        if planning.fallback_reason:
+            details += f"  \nFallback reason: {planning.fallback_reason}"
+        st.markdown(details)
 
 
 def _render_agent_response(response: AgentResponse) -> None:

@@ -82,11 +82,11 @@ existing services:
 ```text
 User request
     ↓
-Deterministic intent classifier and plan selector
+Configured deterministic or LLM planner
     ↓
-One-step or two-step predefined plan
+Validated registered plan and application-owned input mapping
     ↓
-Sequential tool execution
+Shared bounded sequential executor
     ↓
 Structured response
 ```
@@ -151,9 +151,18 @@ Execution-readiness policy
 
 `AGENT_PLANNING_FALLBACK_ENABLED=true` enables one deterministic fallback after
 an LLM error or policy rejection. Disabling it raises an orchestration error
-instead. There are no LLM retries. Sprint 2 still returns planning metadata
-only: the CLI, Streamlit UI, and existing agent executor do not execute accepted
-LLM decisions. Controlled executor integration is reserved for Sprint 3.
+instead. There are no LLM retries.
+
+Sprint 3 connects the accepted decision to the same executor used by the legacy
+deterministic agent. A final adapter recreates only a centrally registered plan
+and applies application-owned `original_request` or `extracted_question` input
+mappings. Planner-provided intent and purpose text cannot control execution, and
+the LLM cannot provide collection names, tool arguments, retrieval settings, or
+provider options. Deterministic fallback decisions are executed through this
+same path. Once tool execution starts, failures short-circuit the plan without
+retrying or replanning. Each request makes at most one planning LLM call and
+executes at most two tools; an `ask` step may make its separate final-answer LLM
+call.
 
 The application keeps document loading, chunking, hashing, embedding, vector
 storage, retrieval, prompt construction, provider SDKs, uploads, and UI code in
@@ -288,7 +297,7 @@ List the configured UI choices:
 python -m app.main collections
 ```
 
-Let the deterministic agent choose a bounded plan:
+Let the configured planner choose and execute a bounded plan:
 
 ```bash
 python -m app.main agent "How is authentication implemented?"
@@ -301,8 +310,9 @@ python -m app.main agent \
   "Route this question and show matching sources: where are refresh tokens stored?"
 ```
 
-Single-step commands retain the selected-tool output. Compound commands print
-the plan, reason, and both ordered step results.
+Agent commands print safe planning strategy, confidence, fallback metadata, and
+the existing tool output. Single-step commands retain the selected-tool output;
+compound commands print the plan and both ordered step results.
 
 Omitting both query flags uses `DEFAULT_QUERY_MODE`, which defaults to manual
 selection of `DEFAULT_RAG_COLLECTION`. `--collection` and `--auto-route` are
@@ -342,10 +352,12 @@ Use the sidebar to upload one or more PDF, TXT, or Markdown files and select
 the indexing collection before choosing **Index documents**. Uploads are always
 indexed into this explicit selection. Questions can independently use manual
 collection selection or automatic routing; automatic mode displays the chosen
-collection and explanation. Selecting **Use Agent** lets the deterministic
-agent choose how to handle questions. It does not affect uploads or indexing.
-One-step results retain the existing display. Two-step results show the selected
-plan, routing step, and final answer or retrieved chunks in order.
+collection and explanation. Selecting **Use Agent** runs the planner configured
+by `AGENT_PLANNING_MODE` and the shared bounded executor. It does not affect
+uploads or indexing. One-step results retain the existing display. Two-step
+results show the selected plan, routing step, and final answer or retrieved
+chunks in order. Safe planning and fallback metadata appears in an expandable
+details section.
 Uploaded files are sanitized, content-addressed, and saved
 under `UPLOAD_DIR`; repeated content is skipped through the same SHA-256 logic as
 the CLI. The main area accepts questions and displays the answer plus expandable
@@ -371,6 +383,7 @@ streamlit run app/ui.py
 pytest -q
 pytest -q tests/test_agent_planner.py
 pytest -q tests/test_agent_planning_service.py
+pytest -q tests/test_agent_decision_adapter.py tests/test_planned_agent.py
 ```
 
 Tests use temporary directories, deterministic embeddings, fake providers, and
@@ -380,9 +393,10 @@ provider selection, deterministic and LLM-routing validation/fallback,
 single-collection runtime orchestration, bounded plan validation and execution,
 routing-context reuse, agent intent and tool selection, grounded prompts,
 structured deterministic/LLM planner validation, policy acceptance, safe
-deterministic fallback, citations, failure short-circuiting, CLI dispatch,
-Streamlit orchestration, safe uploads, duplicate uploads, and persistent vector
-storage.
+deterministic fallback, decision adaptation, exact planned execution order,
+routing-context reuse, failure short-circuiting without replanning, citations,
+CLI dispatch, Streamlit orchestration, safe uploads, duplicate uploads, and
+persistent vector storage.
 
 ## Local data, privacy, and cost
 
@@ -417,14 +431,16 @@ separately from the configured `UPLOAD_DIR` after verifying the path.
 - Automatic routing uses a small built-in route catalog; custom collections
   currently require manual selection.
 - Routing picks one collection and does not perform cross-collection ranking.
-- The agent recognizes only six fixed plans and cannot invent plans or use memory.
-- LLM-generated agent decisions are validated and safely orchestrated but are
-  not connected to tool execution in Sprint 2.
+- The agent supports only six fixed registered plans and at most two sequential
+  execution steps.
+- It cannot invent tools, modify application-owned tool arguments, retry or
+  recursively replan, reflect, use conversation memory, or perform background
+  work.
 
 ## Roadmap
 
 - Configurable routing descriptions for custom collections
 - Evaluated learned routing and cross-collection retrieval strategies
-- Sprint 3: controlled integration of validated LLM decisions with bounded execution
+- ✅ Sprint 3: controlled execution of validated decisions through one bounded executor
 - Additional explicit agent tools where they add clear user value
 - Optional conversation features only if explicitly designed in a future milestone

@@ -5,7 +5,13 @@ import logging
 import sys
 from pathlib import Path
 
-from app.agent import AgentResponse, build_agent
+from app.agent import (
+    PlannedAgentExecutionError,
+    PlannedAgentResult,
+    build_planned_agent_service,
+)
+from app.agent.decision_adapter import AgentExecutionPreparationError
+from app.agent.planning_service import AgentPlanningServiceError
 from app.config import ConfigurationError, Settings, get_settings
 from app.services.answering import AnswerGenerationError, AnswerResult
 from app.services.document_loader import DocumentLoadError
@@ -201,7 +207,9 @@ def _run_route(question: str, settings: Settings) -> None:
 
 def _run_agent(request: str, settings: Settings) -> None:
     """Select and execute one predefined bounded plan for a request."""
-    response = build_agent(settings).run(request)
+    result = build_planned_agent_service(settings).run(request)
+    _print_agent_planning(result)
+    response = result.execution
     if len(response.steps) == 1:
         print(f"Selected tool: {response.decision.tool}")
         print(f"Reason: {response.decision.reason}")
@@ -220,6 +228,19 @@ def _run_agent(request: str, settings: Settings) -> None:
             show_routing=step.tool == "routing",
             label_answer=True,
         )
+
+
+def _print_agent_planning(result: PlannedAgentResult) -> None:
+    """Print safe planner metadata without raw provider details."""
+    planning = result.planning
+    print(f"Planning requested: {planning.requested_strategy}")
+    print(f"Planning used: {planning.used_strategy}")
+    print(f"Selected plan: {planning.decision.selected_plan}")
+    print(f"Confidence: {planning.decision.confidence:.2f}")
+    print(f"Planning reason: {planning.decision.reason}")
+    print(f"Fallback used: {'yes' if planning.fallback_used else 'no'}")
+    if planning.fallback_reason:
+        print(f"Fallback reason: {planning.fallback_reason}")
 
 
 def _print_agent_tool_result(
@@ -302,6 +323,9 @@ def main(argv: list[str] | None = None) -> int:
         EmbeddingError,
         AnswerGenerationError,
         IndexingError,
+        AgentExecutionPreparationError,
+        AgentPlanningServiceError,
+        PlannedAgentExecutionError,
         LLMProviderError,
         VectorStoreError,
         OSError,

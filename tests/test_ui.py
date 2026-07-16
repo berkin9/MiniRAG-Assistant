@@ -13,6 +13,12 @@ from app.agent.models import (
     Intent,
     ToolDecision,
 )
+from app.agent.planner_models import (
+    AgentDecision,
+    AgentPlanningResult,
+    AgentPlanningStep,
+)
+from app.agent.planned_agent import PlannedAgentResult
 from app.config import Settings
 from app.services.answering import AnswerResult
 from app.services.routing import RoutingDecision
@@ -22,11 +28,11 @@ from app.services.runtime import RoutedAnswer
 class FakeAgent:
     """Return one controlled response and record requests."""
 
-    def __init__(self, response: AgentResponse) -> None:
+    def __init__(self, response: PlannedAgentResult) -> None:
         self.response = response
         self.requests: list[str] = []
 
-    def run(self, request: str) -> AgentResponse:
+    def run(self, request: str) -> PlannedAgentResult:
         self.requests.append(request)
         return self.response
 
@@ -55,6 +61,33 @@ def _routed_answer() -> RoutedAnswer:
         AnswerResult("question", "answer", (), False, "technical"),
         RoutingDecision("technical", "Matched technical terms."),
     )
+
+
+def _planned(
+    response: AgentResponse,
+    *,
+    requested: str = "deterministic",
+    used: str = "deterministic",
+    fallback: bool = False,
+) -> PlannedAgentResult:
+    plan = response.plan
+    assert plan is not None
+    planning = AgentPlanningResult(
+        decision=AgentDecision(
+            intent=response.intent.value,
+            selected_plan=plan.name,
+            steps=tuple(
+                AgentPlanningStep(tool=step.tool) for step in plan.steps
+            ),
+            reason=plan.reason,
+            confidence=1.0,
+        ),
+        requested_strategy=requested,
+        used_strategy=used,
+        fallback_used=fallback,
+        fallback_reason="Safe fallback." if fallback else None,
+    )
+    return PlannedAgentResult(planning, response)
 
 
 def test_submission_state_disables_empty_and_active_requests(
@@ -163,8 +196,13 @@ def test_agent_checkbox_path_uses_agent_only(
         ToolDecision("ask", "Default grounded question answering."),
         _routed_answer(),
     )
-    agent = FakeAgent(response)
-    monkeypatch.setattr(ui, "build_agent", lambda settings: agent)
+    planned = _planned(response)
+    agent = FakeAgent(planned)
+    monkeypatch.setattr(
+        ui,
+        "build_planned_agent_service",
+        lambda settings: agent,
+    )
     monkeypatch.setattr(
         ui,
         "answer_with_routing",
@@ -175,7 +213,7 @@ def test_agent_checkbox_path_uses_agent_only(
 
     result = ui._run_question("question", Settings(), "project", False, True)
 
-    assert result is response
+    assert result is planned
     assert agent.requests == ["question"]
 
 
@@ -187,7 +225,7 @@ def test_unchecked_agent_preserves_existing_streamlit_path(
     captured: list[tuple[object, ...]] = []
     monkeypatch.setattr(
         ui,
-        "build_agent",
+        "build_planned_agent_service",
         lambda settings: (_ for _ in ()).throw(
             AssertionError("Agent must not be built")
         ),
@@ -253,3 +291,50 @@ def test_streamlit_renders_two_step_agent_results_in_order(
         ("subheader", "Step 2: ask"),
         ("answer", False),
     ]
+
+
+def test_streamlit_renders_safe_planning_metadata_after_main_result(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Planning details should be expandable without obscuring tool output."""
+    response = AgentResponse(
+        "question",
+        Intent.ASK,
+        ToolDecision("ask", "Grounded answer."),
+        _routed_answer(),
+    )
+    result = _planned(
+        response,
+        requested="llm",
+        used="deterministic",
+        fallback=True,
+    )
+    events: list[tuple[str, object]] = []
+
+    @contextmanager
+    def expander(label: str):
+        events.append(("expander", label))
+        yield
+
+    monkeypatch.setattr(
+        ui,
+        "_render_agent_response",
+        lambda value: events.append(("execution", value)),
+    )
+    monkeypatch.setattr(ui.st, "expander", expander)
+    monkeypatch.setattr(
+        ui.st,
+        "markdown",
+        lambda value: events.append(("markdown", value)),
+    )
+
+    ui._render_planned_agent_result(result)
+
+    assert events[0] == ("execution", response)
+    assert events[1] == ("expander", "Agent planning details")
+    details = str(events[2][1])
+    assert "Requested strategy: **llm**" in details
+    assert "Used strategy: **deterministic**" in details
+    assert "Fallback used: **yes**" in details
+    assert "Fallback reason: Safe fallback." in details
+    assert "Executed tools: **ask**" in details
