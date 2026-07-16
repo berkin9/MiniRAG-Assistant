@@ -132,11 +132,28 @@ The planning layer now has a common interface with two implementations:
   produce JSON, then validates it as a bounded `AgentDecision` with one or two
   registered tool steps.
 
-`AGENT_PLANNING_MODE` defaults to `deterministic`. In Sprint 1, `llm` mode is an
-isolated planning capability only: it can generate and validate a structured
-decision, but the CLI, Streamlit UI, and agent executor do not invoke or execute
-LLM-generated plans yet. There is no fallback, retry, retrieval, or answer
-generation inside the planner.
+`AGENT_PLANNING_MODE` defaults to `deterministic`, which never constructs an LLM
+provider. In `llm` mode, structural validation first ensures the JSON matches a
+registered bounded plan. A separate execution-readiness policy then enforces
+`AGENT_MIN_PLANNING_CONFIDENCE` and the configurable `AGENT_MAX_STEPS` limit.
+
+```text
+User query
+    ↓
+LLM planner
+    ↓
+Structured validation
+    ↓
+Execution-readiness policy
+    ├── Accepted → return LLM decision
+    └── Rejected/error → deterministic planner
+```
+
+`AGENT_PLANNING_FALLBACK_ENABLED=true` enables one deterministic fallback after
+an LLM error or policy rejection. Disabling it raises an orchestration error
+instead. There are no LLM retries. Sprint 2 still returns planning metadata
+only: the CLI, Streamlit UI, and existing agent executor do not execute accepted
+LLM decisions. Controlled executor integration is reserved for Sprint 3.
 
 The application keeps document loading, chunking, hashing, embedding, vector
 storage, retrieval, prompt construction, provider SDKs, uploads, and UI code in
@@ -206,6 +223,9 @@ by the CLI or Streamlit interface.
 | `AGENT_PLANNING_MODE` | `deterministic` | Structured planning strategy: `deterministic` or `llm` |
 | `AGENT_PLANNING_TEMPERATURE` | `0.0` | LLM planner generation temperature, from 0 to 2 |
 | `AGENT_MAX_PLANNING_TOKENS` | `400` | Maximum tokens for one structured planner response |
+| `AGENT_MIN_PLANNING_CONFIDENCE` | `0.60` | Minimum confidence for accepting an LLM decision |
+| `AGENT_MAX_STEPS` | `2` | Runtime step limit, never above the hard two-step bound |
+| `AGENT_PLANNING_FALLBACK_ENABLED` | `true` | Use deterministic planning after an LLM error or rejection |
 | `DEFAULT_TOP_K` | `4` | Maximum retrieved context chunks |
 | `MAX_RETRIEVAL_DISTANCE` | `1.2` | Largest accepted cosine distance |
 | `LLM_PROVIDER` | `openai` | `openai` or `gemini` |
@@ -350,6 +370,7 @@ streamlit run app/ui.py
 ```bash
 pytest -q
 pytest -q tests/test_agent_planner.py
+pytest -q tests/test_agent_planning_service.py
 ```
 
 Tests use temporary directories, deterministic embeddings, fake providers, and
@@ -358,9 +379,10 @@ download an embedding model. Coverage includes existing ingestion/indexing,
 provider selection, deterministic and LLM-routing validation/fallback,
 single-collection runtime orchestration, bounded plan validation and execution,
 routing-context reuse, agent intent and tool selection, grounded prompts,
-structured deterministic/LLM planner validation, citations, failure
-short-circuiting, CLI dispatch, Streamlit orchestration, safe uploads, duplicate
-uploads, and persistent vector storage.
+structured deterministic/LLM planner validation, policy acceptance, safe
+deterministic fallback, citations, failure short-circuiting, CLI dispatch,
+Streamlit orchestration, safe uploads, duplicate uploads, and persistent vector
+storage.
 
 ## Local data, privacy, and cost
 
@@ -396,13 +418,13 @@ separately from the configured `UPLOAD_DIR` after verifying the path.
   currently require manual selection.
 - Routing picks one collection and does not perform cross-collection ranking.
 - The agent recognizes only six fixed plans and cannot invent plans or use memory.
-- LLM-generated agent decisions are validated but are not connected to tool
-  execution in Sprint 1.
+- LLM-generated agent decisions are validated and safely orchestrated but are
+  not connected to tool execution in Sprint 2.
 
 ## Roadmap
 
 - Configurable routing descriptions for custom collections
 - Evaluated learned routing and cross-collection retrieval strategies
-- Controlled integration of validated LLM decisions with bounded execution
+- Sprint 3: controlled integration of validated LLM decisions with bounded execution
 - Additional explicit agent tools where they add clear user value
 - Optional conversation features only if explicitly designed in a future milestone

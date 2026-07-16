@@ -4,19 +4,15 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import TypeAlias
 
+from app.agent.definitions import (
+    HARD_AGENT_MAX_STEPS,
+    SUPPORTED_AGENT_PLANS,
+    SUPPORTED_AGENT_TOOLS,
+)
 from app.services.routing import RoutingDecision
 from app.services.runtime import RoutedAnswer, RoutedSearch
 
-SUPPORTED_AGENT_TOOLS = frozenset({"ask", "search", "collections", "routing"})
 SUPPORTED_INPUT_MODES = frozenset({"original_request", "extracted_question"})
-SUPPORTED_AGENT_PLANS: dict[str, tuple[str, ...]] = {
-    "ask": ("ask",),
-    "search": ("search",),
-    "collections": ("collections",),
-    "routing": ("routing",),
-    "route_and_ask": ("routing", "ask"),
-    "route_and_search": ("routing", "search"),
-}
 
 
 class Intent(str, Enum):
@@ -63,7 +59,7 @@ class AgentPlan:
         """Enforce the strict execution bound."""
         if not self.steps:
             raise ValueError("Agent plans must contain at least one step")
-        if len(self.steps) > 2:
+        if len(self.steps) > HARD_AGENT_MAX_STEPS:
             raise ValueError("Agent plans cannot contain more than two steps")
         expected_tools = SUPPORTED_AGENT_PLANS.get(self.name)
         if expected_tools is None:

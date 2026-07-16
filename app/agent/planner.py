@@ -68,7 +68,10 @@ class LLMAgentPlanner:
                 prompt.system_prompt, prompt.user_prompt
             )
         except LLMProviderError as error:
-            raise AgentPlanningError("LLM agent planning request failed") from error
+            raise AgentPlanningError(
+                "LLM agent planning request failed",
+                code="provider_failure",
+            ) from error
         return parse_agent_decision(response)
 
 

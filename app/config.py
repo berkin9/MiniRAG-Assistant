@@ -7,6 +7,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+from app.agent_limits import HARD_AGENT_MAX_STEPS
 from app.services.collections import CollectionRegistry
 
 DEFAULT_CHUNK_SIZE = 800
@@ -29,6 +30,9 @@ DEFAULT_QUERY_MODE = "manual"
 DEFAULT_AGENT_PLANNING_MODE = "deterministic"
 DEFAULT_AGENT_PLANNING_TEMPERATURE = 0.0
 DEFAULT_AGENT_MAX_PLANNING_TOKENS = 400
+DEFAULT_AGENT_MIN_PLANNING_CONFIDENCE = 0.60
+DEFAULT_AGENT_MAX_STEPS = HARD_AGENT_MAX_STEPS
+DEFAULT_AGENT_PLANNING_FALLBACK_ENABLED = True
 SUPPORTED_RAG_ROUTING_MODES = frozenset({"deterministic", "llm"})
 SUPPORTED_QUERY_MODES = frozenset({"manual", "automatic"})
 SUPPORTED_AGENT_PLANNING_MODES = frozenset({"deterministic", "llm"})
@@ -69,6 +73,11 @@ class Settings:
     agent_planning_mode: str = DEFAULT_AGENT_PLANNING_MODE
     agent_planning_temperature: float = DEFAULT_AGENT_PLANNING_TEMPERATURE
     agent_max_planning_tokens: int = DEFAULT_AGENT_MAX_PLANNING_TOKENS
+    agent_min_planning_confidence: float = DEFAULT_AGENT_MIN_PLANNING_CONFIDENCE
+    agent_max_steps: int = DEFAULT_AGENT_MAX_STEPS
+    agent_planning_fallback_enabled: bool = (
+        DEFAULT_AGENT_PLANNING_FALLBACK_ENABLED
+    )
 
     def __post_init__(self) -> None:
         """Validate chunk settings."""
@@ -148,6 +157,17 @@ class Settings:
             raise ConfigurationError(
                 "AGENT_MAX_PLANNING_TOKENS must be greater than zero"
             )
+        if not 0 <= self.agent_min_planning_confidence <= 1:
+            raise ConfigurationError(
+                "AGENT_MIN_PLANNING_CONFIDENCE must be between 0 and 1"
+            )
+        if self.agent_max_steps < 1:
+            raise ConfigurationError("AGENT_MAX_STEPS must be at least 1")
+        if self.agent_max_steps > HARD_AGENT_MAX_STEPS:
+            raise ConfigurationError(
+                f"AGENT_MAX_STEPS cannot exceed the hard agent limit of "
+                f"{HARD_AGENT_MAX_STEPS}"
+            )
 
 
 def _read_int(name: str, default: int) -> int:
@@ -166,6 +186,18 @@ def _read_float(name: str, default: float) -> float:
         return float(value)
     except ValueError as error:
         raise ConfigurationError(f"{name} must be a number, got {value!r}") from error
+
+
+def _read_bool(name: str, default: bool) -> bool:
+    """Read a common boolean environment value with a clear error."""
+    value = os.getenv(name, str(default)).strip().lower()
+    if value in {"1", "true", "yes", "on"}:
+        return True
+    if value in {"0", "false", "no", "off"}:
+        return False
+    raise ConfigurationError(
+        f"{name} must be a boolean (true or false), got {value!r}"
+    )
 
 
 def get_settings() -> Settings:
@@ -228,5 +260,14 @@ def get_settings() -> Settings:
         ),
         agent_max_planning_tokens=_read_int(
             "AGENT_MAX_PLANNING_TOKENS", DEFAULT_AGENT_MAX_PLANNING_TOKENS
+        ),
+        agent_min_planning_confidence=_read_float(
+            "AGENT_MIN_PLANNING_CONFIDENCE",
+            DEFAULT_AGENT_MIN_PLANNING_CONFIDENCE,
+        ),
+        agent_max_steps=_read_int("AGENT_MAX_STEPS", DEFAULT_AGENT_MAX_STEPS),
+        agent_planning_fallback_enabled=_read_bool(
+            "AGENT_PLANNING_FALLBACK_ENABLED",
+            DEFAULT_AGENT_PLANNING_FALLBACK_ENABLED,
         ),
     )

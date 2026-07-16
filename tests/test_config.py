@@ -119,6 +119,9 @@ def test_agent_planning_defaults_are_deterministic(
     assert settings.agent_planning_mode == "deterministic"
     assert settings.agent_planning_temperature == 0.0
     assert settings.agent_max_planning_tokens == 400
+    assert settings.agent_min_planning_confidence == 0.60
+    assert settings.agent_max_steps == 2
+    assert settings.agent_planning_fallback_enabled is True
 
 
 @pytest.mark.parametrize(
@@ -135,6 +138,23 @@ def test_agent_planning_defaults_are_deterministic(
             "0",
             "AGENT_MAX_PLANNING_TOKENS must be greater than zero",
         ),
+        (
+            "AGENT_MIN_PLANNING_CONFIDENCE",
+            "-0.1",
+            "AGENT_MIN_PLANNING_CONFIDENCE must be between 0 and 1",
+        ),
+        (
+            "AGENT_MIN_PLANNING_CONFIDENCE",
+            "1.1",
+            "AGENT_MIN_PLANNING_CONFIDENCE must be between 0 and 1",
+        ),
+        ("AGENT_MAX_STEPS", "0", "AGENT_MAX_STEPS must be at least 1"),
+        ("AGENT_MAX_STEPS", "3", "AGENT_MAX_STEPS cannot exceed"),
+        (
+            "AGENT_PLANNING_FALLBACK_ENABLED",
+            "maybe",
+            "AGENT_PLANNING_FALLBACK_ENABLED must be a boolean",
+        ),
     ],
 )
 def test_invalid_agent_planning_configuration(
@@ -145,3 +165,16 @@ def test_invalid_agent_planning_configuration(
 
     with pytest.raises(ConfigurationError, match=message):
         get_settings()
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [("true", True), ("1", True), ("false", False), ("0", False)],
+)
+def test_agent_planning_fallback_boolean_values(
+    monkeypatch: pytest.MonkeyPatch, value: str, expected: bool
+) -> None:
+    """Common environment boolean forms should parse deterministically."""
+    monkeypatch.setenv("AGENT_PLANNING_FALLBACK_ENABLED", value)
+
+    assert get_settings().agent_planning_fallback_enabled is expected

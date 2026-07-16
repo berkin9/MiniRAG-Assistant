@@ -1,8 +1,14 @@
 """Validated structured output models for agent planning."""
 
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from app.agent.models import SUPPORTED_AGENT_PLANS, SUPPORTED_AGENT_TOOLS
+from app.agent.definitions import (
+    HARD_AGENT_MAX_STEPS,
+    SUPPORTED_AGENT_PLANS,
+    SUPPORTED_AGENT_TOOLS,
+)
 
 
 class AgentPlanningStep(BaseModel):
@@ -39,7 +45,10 @@ class AgentDecision(BaseModel):
 
     intent: str
     selected_plan: str
-    steps: tuple[AgentPlanningStep, ...] = Field(min_length=1, max_length=2)
+    steps: tuple[AgentPlanningStep, ...] = Field(
+        min_length=1,
+        max_length=HARD_AGENT_MAX_STEPS,
+    )
     reason: str
     confidence: float = Field(ge=0.0, le=1.0)
 
@@ -70,4 +79,50 @@ class AgentDecision(BaseModel):
             raise ValueError(
                 f"plan {self.selected_plan!r} requires tools: {', '.join(expected)}"
             )
+        return self
+
+
+class AgentDecisionPolicyResult(BaseModel):
+    """Immutable acceptance outcome from the execution-readiness policy."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    accepted: bool
+    reason: str | None = None
+
+
+class AgentPlanningResult(BaseModel):
+    """Safe structured result from one orchestrated planning request."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    decision: AgentDecision
+    requested_strategy: Literal["deterministic", "llm"]
+    used_strategy: Literal["deterministic", "llm"]
+    fallback_used: bool
+    fallback_reason: str | None = None
+    primary_error_type: str | None = None
+    policy_rejection_reason: str | None = None
+
+    @model_validator(mode="after")
+    def validate_fallback_metadata(self) -> "AgentPlanningResult":
+        """Keep fallback flags, strategy, and safe reason consistent."""
+        if self.fallback_used:
+            if (
+                self.requested_strategy != "llm"
+                or self.used_strategy != "deterministic"
+            ):
+                raise ValueError(
+                    "fallback must replace LLM planning with deterministic"
+                )
+            if not self.fallback_reason or not self.fallback_reason.strip():
+                raise ValueError("fallback_reason is required when fallback is used")
+        elif self.fallback_reason is not None:
+            raise ValueError("fallback_reason requires fallback_used=true")
+        elif self.requested_strategy != self.used_strategy:
+            raise ValueError("strategy changes require fallback_used=true")
+        elif self.primary_error_type is not None:
+            raise ValueError("primary_error_type requires fallback_used=true")
+        elif self.policy_rejection_reason is not None:
+            raise ValueError("policy_rejection_reason requires fallback_used=true")
         return self

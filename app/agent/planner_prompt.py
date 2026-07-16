@@ -3,7 +3,11 @@
 import json
 from dataclasses import dataclass
 
-from app.agent.models import SUPPORTED_AGENT_PLANS, SUPPORTED_AGENT_TOOLS
+from app.agent.definitions import (
+    HARD_AGENT_MAX_STEPS,
+    SUPPORTED_AGENT_PLANS,
+    SUPPORTED_AGENT_TOOLS,
+)
 
 
 @dataclass(frozen=True)
@@ -43,13 +47,16 @@ class AgentPlanningPromptBuilder:
             },
             indent=2,
         )
+        step_limit = (
+            f"Use at most two steps (hard limit: {HARD_AGENT_MAX_STEPS})."
+        )
         system_prompt = f"""You are an agent planner, not an answer generator.
 Do not answer the user's question and do not execute or simulate any tool.
 Choose only from these tools: {tools}.
 Choose only from these plans and exact tool sequences:
 {plans}
 Return one raw JSON object only. Do not use Markdown or JSON fences.
-Do not invent tools or plans. Use at most two steps.
+Do not invent tools or plans. {step_limit}
 Use a confidence value from 0.0 to 1.0.
 Keep reason to a short high-level justification, not chain-of-thought.
 Return exactly this JSON shape:
