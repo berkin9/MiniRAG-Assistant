@@ -1,5 +1,7 @@
 """Tests for opt-in Streamlit agent orchestration."""
 
+from contextlib import contextmanager
+
 import pytest
 
 from app import ui
@@ -29,11 +31,126 @@ class FakeAgent:
         return self.response
 
 
+class FakeStreamlit:
+    """Provide session state and visible spinner events for UX tests."""
+
+    def __init__(self) -> None:
+        self.session_state: dict[str, object] = {}
+        self.events: list[str] = []
+
+    @contextmanager
+    def spinner(self, message: str):
+        self.events.append(f"start:{message}")
+        try:
+            yield
+        finally:
+            self.events.append("stop")
+
+    def error(self, message: str) -> None:
+        self.events.append(f"error:{message}")
+
+
 def _routed_answer() -> RoutedAnswer:
     return RoutedAnswer(
         AnswerResult("question", "answer", (), False, "technical"),
         RoutingDecision("technical", "Matched technical terms."),
     )
+
+
+def test_submission_state_disables_empty_and_active_requests(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The submit button guard should reflect input and processing state."""
+    fake_st = FakeStreamlit()
+    monkeypatch.setattr(ui, "st", fake_st)
+
+    ui._initialize_request_state()
+
+    assert ui._submit_disabled("   ") is True
+    assert ui._submit_disabled("question") is False
+    fake_st.session_state["is_processing"] = True
+    assert ui._submit_disabled("question") is True
+
+
+def test_start_processing_prevents_duplicate_submission(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An active request must ignore repeated start callbacks."""
+    fake_st = FakeStreamlit()
+    fake_st.session_state.update(
+        {
+            "is_processing": False,
+            "request_outcome": "old",
+            "request_error": "old error",
+        }
+    )
+    monkeypatch.setattr(ui, "st", fake_st)
+
+    ui._start_processing()
+    fake_st.session_state["request_outcome"] = "active"
+    ui._start_processing()
+
+    assert fake_st.session_state["is_processing"] is True
+    assert fake_st.session_state["request_outcome"] == "active"
+    assert "request_error" not in fake_st.session_state
+
+
+def test_processing_shows_spinner_and_reenables_after_success(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Successful requests should visibly process and always release the guard."""
+    fake_st = FakeStreamlit()
+    fake_st.session_state["is_processing"] = True
+    expected = _routed_answer()
+    monkeypatch.setattr(ui, "st", fake_st)
+    monkeypatch.setattr(ui, "_run_question", lambda *args: expected)
+
+    ui._process_submission("question", Settings(), "general", False, False)
+
+    assert fake_st.events == ["start:Processing request...", "stop"]
+    assert fake_st.session_state["is_processing"] is False
+    assert fake_st.session_state["request_outcome"] is expected
+    assert "request_error" not in fake_st.session_state
+
+
+def test_processing_reenables_after_expected_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Expected request failures should release the guard and save the error."""
+    fake_st = FakeStreamlit()
+    fake_st.session_state["is_processing"] = True
+    monkeypatch.setattr(ui, "st", fake_st)
+    monkeypatch.setattr(
+        ui,
+        "_run_question",
+        lambda *args: (_ for _ in ()).throw(ValueError("bad request")),
+    )
+
+    ui._process_submission("question", Settings(), "general", False, False)
+
+    assert fake_st.events == ["start:Processing request...", "stop"]
+    assert fake_st.session_state["is_processing"] is False
+    assert fake_st.session_state["request_error"] == "bad request"
+    assert "request_outcome" not in fake_st.session_state
+
+
+def test_processing_guard_resets_when_unexpected_failure_propagates(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The finally guard should release even when Streamlit reports a traceback."""
+    fake_st = FakeStreamlit()
+    fake_st.session_state["is_processing"] = True
+    monkeypatch.setattr(ui, "st", fake_st)
+    monkeypatch.setattr(
+        ui,
+        "_run_question",
+        lambda *args: (_ for _ in ()).throw(RuntimeError("unexpected")),
+    )
+
+    with pytest.raises(RuntimeError, match="unexpected"):
+        ui._process_submission("question", Settings(), "general", False, False)
+
+    assert fake_st.session_state["is_processing"] is False
 
 
 def test_agent_checkbox_path_uses_agent_only(

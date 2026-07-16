@@ -23,6 +23,17 @@ from app.services.runtime import (
 from app.services.uploads import UploadData, index_uploads
 from app.services.vector_store import VectorStoreError
 
+_PROCESSING_KEY = "is_processing"
+_OUTCOME_KEY = "request_outcome"
+_ERROR_KEY = "request_error"
+_REQUEST_ERRORS = (
+    AnswerGenerationError,
+    EmbeddingError,
+    LLMProviderError,
+    VectorStoreError,
+    ValueError,
+)
+
 
 def main() -> None:
     """Render the MiniRAG Streamlit application."""
@@ -37,6 +48,7 @@ def main() -> None:
     except ConfigurationError as error:
         st.error(str(error))
         return
+    _initialize_request_state()
 
     with st.sidebar:
         st.header("Documents")
@@ -83,8 +95,54 @@ def main() -> None:
         )
 
     question = st.text_input("Ask a question about indexed documents")
-    if st.button("Ask", disabled=not question.strip(), type="primary"):
-        try:
+    st.button(
+        "Ask",
+        disabled=_submit_disabled(question),
+        type="primary",
+        on_click=_start_processing,
+    )
+    if st.session_state[_PROCESSING_KEY]:
+        _process_submission(
+            question,
+            settings,
+            selected_collection,
+            automatic_routing,
+            use_agent,
+        )
+        st.rerun()
+    _render_saved_submission(automatic_routing)
+
+
+def _initialize_request_state() -> None:
+    """Initialize session-scoped submission state once."""
+    if _PROCESSING_KEY not in st.session_state:
+        st.session_state[_PROCESSING_KEY] = False
+
+
+def _submit_disabled(question: str) -> bool:
+    """Disable submission for empty input or an active request."""
+    return not question.strip() or bool(st.session_state[_PROCESSING_KEY])
+
+
+def _start_processing() -> None:
+    """Mark a new request active before Streamlit rerenders widgets."""
+    if st.session_state[_PROCESSING_KEY]:
+        return
+    st.session_state[_PROCESSING_KEY] = True
+    st.session_state.pop(_OUTCOME_KEY, None)
+    st.session_state.pop(_ERROR_KEY, None)
+
+
+def _process_submission(
+    question: str,
+    settings: Settings,
+    selected_collection: str,
+    automatic_routing: bool,
+    use_agent: bool,
+) -> None:
+    """Run one guarded request and save its displayable outcome."""
+    try:
+        with st.spinner("Processing request..."):
             outcome = _run_question(
                 question,
                 settings,
@@ -92,19 +150,27 @@ def main() -> None:
                 automatic_routing,
                 use_agent,
             )
-        except (
-            AnswerGenerationError,
-            EmbeddingError,
-            LLMProviderError,
-            VectorStoreError,
-            ValueError,
-        ) as error:
-            st.error(str(error))
-        else:
-            if isinstance(outcome, AgentResponse):
-                _render_agent_response(outcome)
-            else:
-                _render_routed_answer(outcome, automatic_routing)
+    except _REQUEST_ERRORS as error:
+        st.session_state[_ERROR_KEY] = str(error)
+        st.session_state.pop(_OUTCOME_KEY, None)
+    else:
+        st.session_state[_OUTCOME_KEY] = outcome
+        st.session_state.pop(_ERROR_KEY, None)
+    finally:
+        st.session_state[_PROCESSING_KEY] = False
+
+
+def _render_saved_submission(automatic_routing: bool) -> None:
+    """Render the latest completed response or expected error."""
+    error = st.session_state.get(_ERROR_KEY)
+    if error is not None:
+        st.error(error)
+        return
+    outcome = st.session_state.get(_OUTCOME_KEY)
+    if isinstance(outcome, AgentResponse):
+        _render_agent_response(outcome)
+    elif isinstance(outcome, RoutedAnswer):
+        _render_routed_answer(outcome, automatic_routing)
 
 
 def _run_question(
