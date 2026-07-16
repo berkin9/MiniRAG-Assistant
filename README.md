@@ -131,6 +131,36 @@ recall, relevant-document recall at global K, duplicates removed, candidate
 counts, and retrieval latency. These retrieval metrics remain separate from
 the Sprint 4 planner benchmark and use fake selectors/stores in automated tests.
 
+## Stable citation attribution
+
+Sequential labels alone are easy for an answer model to confuse when several
+evidence blocks discuss related facts. After final ranking and deduplication,
+MiniRAG now assigns every included evidence block one deterministic stable ID.
+For example:
+
+```text
+Internal model citation: TECH-02-C5-A1B2C3
+Displayed citation:     Source 2
+```
+
+The prompt wraps each complete block in an explicit
+`<CITATION id="…">...</CITATION>` boundary and instructs the answer model to
+cite the exact ID supporting each claim. Prompt construction, validation, and
+source rendering reuse one canonical ordered source tuple. Context budgets drop
+complete blocks and never retain content after truncating its citation header.
+
+After the single answer-provider call, a local validator rejects unknown IDs,
+IDs from another request, malformed tokens, and invalid source numbers. It can
+only normalize harmless whitespace or map an exact current-request `[Source N]`
+to its one unambiguous stable ID. Validated IDs are then converted back to
+readable display labels using exact-token replacement. No second LLM call,
+nearest-source guessing, or automatic semantic citation assignment occurs.
+
+Citation validation guarantees identity integrity, not full semantic
+entailment. The strengthened prompt reduces incorrect claim-to-source choices,
+but the application does not yet use an entailment model to prove that every
+cited passage supports every paraphrase.
+
 ## Bounded Multi-Step Agent
 
 The optional agent adds a deliberately bounded decision layer before the
@@ -450,7 +480,7 @@ Example answer:
 The project deadline is Friday at 5 PM [Source 1].
 
 Sources:
-- [Source 1] data/project-plan.pdf, page 4, chunk 7, distance 0.2841
+- [Source 1] [PROJ-01-C7-A1B2C3] project-plan.pdf, page 4, chunk 7, distance 0.2841
 ```
 
 If no chunk passes the configured threshold, MiniRAG returns a deterministic
@@ -556,6 +586,8 @@ separately from the configured `UPLOAD_DIR` after verifying the path.
 - Changed document content creates a new hash; stale versions are not removed
   automatically.
 - Citations identify supporting chunks but are not independently fact-checked.
+- Citation validation checks stable identity and allowed mappings, not semantic
+  entailment of generated paraphrases.
 - V1 has no authentication, conversation memory, hybrid keyword search, or
   streaming answer output.
 - Automatic selection uses a small built-in route catalog; custom collections

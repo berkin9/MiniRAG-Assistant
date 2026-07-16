@@ -378,13 +378,17 @@ def _render_answer(result: AnswerResult) -> None:
         with st.expander("Sources", expanded=True):
             for source in result.sources:
                 page = f" · Page {source.page_number}" if source.page_number else ""
+                citation_identity = (
+                    f" [{source.citation_id}]" if source.citation_id else ""
+                )
                 collection = (
                     f" · Collections {', '.join(source.matched_collections)}"
                     if result.selected_collections
                     else ""
                 )
                 st.markdown(
-                    f"**[{source.label}] {Path(source.source_file).name}**"
+                    f"**[{source.label}]{citation_identity} "
+                    f"{Path(source.source_file).name}**"
                     f"{page}{collection}  \n"
                     f"Chunk {source.chunk_index} · "
                     f"Distance {source.distance:.4f}"

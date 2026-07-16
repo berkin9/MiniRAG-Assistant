@@ -89,7 +89,7 @@ def test_answer_uses_retrieved_context_and_returns_sources() -> None:
     assert "only from the supplied context" in provider.system_prompt
     assert GROUNDED_SYSTEM_PROMPT == provider.system_prompt
     assert "The project deadline is Friday." in provider.user_prompt
-    assert "[Source 1]" in provider.user_prompt
+    assert result.sources[0].citation_id in provider.user_prompt
 
 
 def test_no_context_does_not_build_or_call_provider() -> None:

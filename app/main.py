@@ -238,13 +238,17 @@ def _print_answer(result: AnswerResult) -> None:
     print("\nSources:")
     for source in result.sources:
         page = f", page {source.page_number}" if source.page_number else ""
+        citation_identity = (
+            f" [{source.citation_id}]" if source.citation_id else ""
+        )
         collections = (
             f"{', '.join(source.matched_collections or (source.collection,))} — "
             if result.selected_collections
             else ""
         )
         print(
-            f"- [{source.label}] {collections}{Path(source.source_file).name}{page}, "
+            f"- [{source.label}]{citation_identity} "
+            f"{collections}{Path(source.source_file).name}{page}, "
             f"chunk {source.chunk_index}, distance {source.distance:.4f}"
         )
 

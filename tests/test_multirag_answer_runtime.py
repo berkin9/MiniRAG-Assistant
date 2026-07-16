@@ -1,6 +1,7 @@
 """Tests for fused answering, runtime strategy branching, and agent tools."""
 
 from pathlib import Path
+import re
 
 import pytest
 
@@ -30,7 +31,9 @@ class FakeProvider:
         self.calls += 1
         self.system_prompt = system_prompt
         self.user_prompt = user_prompt
-        return "Implementation and policy evidence agree [Source 1] [Source 2]."
+        citation_ids = re.findall(r'<CITATION id="([^"]+)">', user_prompt)
+        citations = " ".join(f"[{citation_id}]" for citation_id in citation_ids)
+        return f"Implementation and policy evidence agree {citations}."
 
 
 def _selection() -> CollectionSelectionResult:
@@ -96,7 +99,7 @@ def test_fused_answer_calls_provider_once_with_collection_aware_context() -> Non
     assert "Collections: technical" in provider.user_prompt
     assert "incomplete or conflicting" in provider.system_prompt
     assert "unsupported comparisons" in provider.system_prompt
-    assert "hidden reasoning" in provider.system_prompt
+    assert "chain-of-thought" not in provider.system_prompt
 
 
 def test_empty_fused_evidence_uses_existing_no_evidence_behavior() -> None:

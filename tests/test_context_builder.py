@@ -26,8 +26,9 @@ def test_context_preserves_rank_labels_pages_and_text() -> None:
 
     assert [source.label for source in context.sources] == ["Source 1", "Source 2"]
     assert context.text.index("First ranked text") < context.text.index("Second ranked text")
-    assert "[Source 1]" in context.text
-    assert "File: plan.pdf" in context.text
+    assert '<CITATION id="' in context.text
+    assert "Source 1" not in context.text
+    assert "Document: plan.pdf" in context.text
     assert "Page: 4" in context.text
     assert "Chunk: 7" in context.text
     assert "Page: 0" not in context.text
