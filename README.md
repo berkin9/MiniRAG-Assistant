@@ -1,49 +1,104 @@
+![Python](https://img.shields.io/badge/Python-3.11-blue)
+![RAG](https://img.shields.io/badge/RAG-Yes-success)
+![Agentic AI](https://img.shields.io/badge/Agentic-AI-orange)
+![Multi-RAG](https://img.shields.io/badge/Multi--RAG-enabled-blueviolet)
+![OpenAI](https://img.shields.io/badge/OpenAI-Supported-black)
+![Gemini](https://img.shields.io/badge/Gemini-Supported-4285F4)
+![ChromaDB](https://img.shields.io/badge/VectorDB-Chroma-success)
+![License](https://img.shields.io/badge/License-MIT-green)
+
 # MiniRAG Assistant
 
-MiniRAG Assistant is a compact, portfolio-oriented Retrieval-Augmented
-Generation (RAG) application. RAG means finding relevant passages in your own
-documents before asking a language model to answer. This gives the model focused
-context and lets the application show where its answer came from.
+MiniRAG Assistant is a portfolio-oriented AI engineering project that demonstrates
+modern Retrieval-Augmented Generation (RAG), Multi-RAG retrieval, and bounded
+Agentic AI.
 
-## V1 features
+Rather than training a language model, the application combines local document
+processing, semantic vector search, deterministic or LLM-based planning, and
+grounded answer generation using external foundation models such as OpenAI GPT
+or Google Gemini.
 
-- Recursive PDF, UTF-8 TXT, and Markdown discovery and loading
-- Page-aware, overlapping text chunks
-- Local `sentence-transformers/all-MiniLM-L6-v2` embeddings
-- Persistent local ChromaDB vector storage
-- SHA-256 duplicate prevention and stable chunk IDs
-- Semantic search with configurable cosine-distance filtering
-- Grounded answers through OpenAI or Google Gemini
-- Stable `[Source N]` citations with file, page, chunk, and distance metadata
-- CLI commands for ingestion, indexing, search, and grounded questions
-- Streamlit uploads, indexing status, questions, answers, and expandable sources
-- User-selected logical RAG collections backed by isolated Chroma collections
-- Manual or automatic single-collection query routing with explainable decisions
-- Optional bounded cross-collection retrieval, deduplication, and evidence fusion
-- Optional bounded agent that executes one or two predefined tools
-- Planning-only agent benchmark with JSON/CSV reports and Streamlit metrics
-- Deterministic, network-free tests using injected fakes
+The project demonstrates how production AI systems are commonly built today:
+documents remain local, only retrieved evidence is sent to an external LLM, and
+every answer is grounded in verifiable sources.
 
-No fine-tuning is performed. Embeddings and ChromaDB run locally. During answer
-generation, only the retrieved text chunks—not complete documents—are sent to
-the configured external LLM API.
+
+## AI capabilities
+
+- Retrieval-Augmented Generation (RAG)
+- Multi-RAG with bounded cross-collection retrieval
+- Local embedding generation
+- Semantic vector search with ChromaDB
+- Stable citation attribution
+- Automatic collection routing
+- Deterministic and LLM-based agent planning
+- Bounded multi-step tool execution
+- Grounded answer generation
+- Deterministic fallback for routing and planning
+- Planning benchmark and evaluation
+
+## Foundation models
+
+MiniRAG does **not** train or fine-tune language models.
+
+Instead, it demonstrates a modern AI engineering workflow built around existing
+foundation models.
+
+MiniRAG focuses on AI application engineering rather than model training.
+
+The application combines:
+
+- local embeddings
+- vector retrieval
+- prompt engineering
+- grounded generation
+- bounded agent planning
+- external LLM APIs
+
+Only the retrieved evidence chunks and the user's question are sent to the
+configured provider (OpenAI or Google Gemini). Complete documents are never
+transmitted.
+
+This architecture reflects how many production AI systems are built today.
 
 ## Architecture
 
 ```mermaid
-flowchart LR
-    U[User] --> E[CLI / Streamlit]
-    E --> M{Query mode}
-    M -->|Manual| S[User-selected collection]
-    M -->|Automatic| RT[Collection router]
-    RT --> S
-    S --> R[Collection-aware indexing / retrieval]
-    R --> EM[Local Embedding Service]
-    EM --> C[(Dedicated Chroma collection)]
-    C --> RC[Relevant Chunks]
-    RC --> P[Prompt Builder]
-    P --> L[OpenAI / Gemini Provider]
-    L --> A[Grounded Answer + Sources]
+flowchart TD
+
+    U[User]
+
+    UI[CLI / Streamlit]
+
+    PLAN[Agent Planning Layer<br/>Deterministic or LLM]
+
+    EXEC[Bounded Tool Executor]
+
+    ROUTE[Collection Router]
+
+    RETRIEVE[Multi-RAG Retrieval]
+
+    EMB[Local Embedding Service]
+
+    CHROMA[(ChromaDB)]
+
+    PROMPT[Prompt Builder]
+
+    LLM[OpenAI / Gemini]
+
+    ANSWER[Grounded Answer<br/>Stable Sources]
+
+    U --> UI
+    UI --> PLAN
+    PLAN --> EXEC
+    EXEC --> ROUTE
+    ROUTE --> RETRIEVE
+    RETRIEVE --> EMB
+    EMB --> CHROMA
+    CHROMA --> RETRIEVE
+    RETRIEVE --> PROMPT
+    PROMPT --> LLM
+    LLM --> ANSWER
 ```
 
 Indexing follows a separate path:
@@ -209,6 +264,13 @@ calls, reflection, conversation memory, or background work. The layer uses no
 agent framework: LangChain, LangGraph, CrewAI, AutoGen, and similar frameworks
 are intentionally absent.
 
+Although an LLM may participate in planning, execution always remains under
+application control.
+
+The planner cannot invent new plans, tools, collection names, retrieval
+parameters, provider settings, or arbitrary tool arguments. Every accepted
+decision is validated against application-defined policies before execution.
+
 ### Agent planning strategies
 
 The planning layer now has a common interface with two implementations:
@@ -300,14 +362,19 @@ The application keeps document loading, chunking, hashing, embedding, vector
 storage, retrieval, prompt construction, provider SDKs, uploads, and UI code in
 separate focused modules. Neither LangChain nor LlamaIndex is used.
 
+## AI stack
+
+- Retrieval-Augmented Generation (RAG)
+- Multi-RAG
+- Bounded Agentic AI
+- Sentence Transformers (all-MiniLM-L6-v2)
+- ChromaDB
+- OpenAI Responses API
+- Google Gemini API
+
 ## Technology stack
 
 - Python 3.11+
-- pypdf
-- Sentence Transformers
-- ChromaDB
-- OpenAI Python SDK using the Responses API
-- Google Gen AI Python SDK
 - Pydantic
 - Streamlit
 - pytest
@@ -600,11 +667,49 @@ separately from the configured `UPLOAD_DIR` after verifying the path.
   recursively replan, reflect, use conversation memory, or perform background
   work.
 
-## Roadmap
+## Completed milestones
 
-- Configurable routing descriptions for custom collections
 - ✅ Sprint 3: controlled execution of validated decisions through one bounded executor
 - ✅ Sprint 4: planning evaluation, observability, and benchmark exports
 - ✅ Sprint 5: bounded cross-collection retrieval, fusion, and evaluation
-- Additional explicit agent tools where they add clear user value
-- Optional conversation features only if explicitly designed in a future milestone
+
+## Future work
+
+- Configurable routing descriptions
+- Additional agent tools
+- Optional conversation memory
+
+## What this project demonstrates
+
+MiniRAG Assistant demonstrates practical AI engineering rather than language
+model training.
+
+The project showcases:
+
+- Local document ingestion and indexing
+- Semantic vector retrieval
+- Retrieval-Augmented Generation (RAG)
+- Multi-RAG orchestration
+- Automatic collection routing
+- Stable citation attribution
+- Deterministic and LLM-based planning
+- Bounded Agentic AI
+- Tool orchestration
+- Grounded answer generation
+- Planning benchmark and evaluation
+- Deterministic testing using fake providers and vector stores
+
+The project intentionally avoids autonomous or unrestricted agent behaviour.
+Instead, it demonstrates a production-oriented architecture where every
+planning decision is validated and every execution path is bounded by
+application-defined policies.
+
+It is designed to illustrate how modern AI applications integrate external
+foundation models rather than training custom language models.
+
+The project emphasizes explainability, bounded execution, deterministic
+fallbacks, and reproducible evaluation over unrestricted autonomous behaviour.
+
+This project is intended as a compact demonstration of modern AI application
+architecture, emphasizing orchestration, retrieval quality, explainability,
+and safe bounded agent execution instead of foundation model development.
