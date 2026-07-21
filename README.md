@@ -32,9 +32,11 @@ or Google Gemini.
 The project demonstrates how production AI systems are commonly built today:
 documents are processed within the application runtime. Only retrieved evidence chunks and the user’s question are sent to the configured external LLM provider.
 
-## Live Demo
+## 🚀 Live Demo
 
-[Open MiniRAG Assistant on Streamlit Community Cloud]([DEPLOYED_APP_URL](https://minirag-assistant-79ryu9csxxnt8hclogc9gg.streamlit.app/))
+Try the deployed application on Streamlit Community Cloud:
+
+https://minirag-assistant-79ryu9csxxnt8hclogc9gg.streamlit.app/
 
 ## Deploy to Streamlit Community Cloud
 
@@ -43,19 +45,32 @@ documents are processed within the application runtime. Only retrieved evidence 
 - Main file: streamlit_app.py
 - Python: 3.11
 
-## Try the demo
+## Try the Demo
 
-Index the sample documents into:
+Index the provided sample documents into their corresponding collections:
 
-- sample → general
-- project → project
-- technical → technical
-- policies → policies
+| Document | Collection |
+|----------|------------|
+| Sample | `general` |
+| Project | `project` |
+| Technical | `technical` |
+| Policies | `policies` |
 
-Then enable:
-- Cross collection
-- Automatic routing
-- Use Agent
+Enable:
+
+- ✅ Cross collection retrieval
+- ✅ Automatic routing
+- ✅ Use Agent
+
+Then ask:
+
+> Compare the authentication implementation with the security policy requirements.
+
+Expected behaviour:
+
+- Agent selects the **technical** and **policies** collections.
+- Multi-RAG retrieves evidence from both collections.
+- The answer is grounded and includes source citations.
 
 Ask:
 
@@ -63,9 +78,10 @@ Ask:
 
 ## Quality
 
-- Full test suite: XXX passed
-- External API calls in tests: none
-- Deterministic fake embeddings/providers used for automated tests
+- ✅ Full automated test suite passing
+- ✅ No external API calls during automated tests
+- ✅ Deterministic fake providers and embeddings for reproducible testing
+- ✅ Cross-collection retrieval, routing, citations, and agent planning covered by regression tests
   
 ## AI capabilities
 
@@ -117,20 +133,6 @@ flowchart TD
     RETRIEVE --> CHROMA[(ChromaDB)]
     RETRIEVE --> LLM[Gemini / OpenAI]
     LLM --> ANSWER[Grounded Answer + Citations]
-
-    ANSWER[Grounded Answer<br/>Stable Sources]
-
-    U --> UI
-    UI --> PLAN
-    PLAN --> EXEC
-    EXEC --> ROUTE
-    ROUTE --> RETRIEVE
-    RETRIEVE --> EMB
-    EMB --> CHROMA
-    CHROMA --> RETRIEVE
-    RETRIEVE --> PROMPT
-    PROMPT --> LLM
-    LLM --> ANSWER
 ```
 
 Indexing follows a separate path:
@@ -423,7 +425,7 @@ cp .env.example .env
 The embedding model downloads on first indexing or search and then runs locally.
 No LLM key is needed for `ingest`, `index`, or `search`.
 
-### OpenAI configuration
+### Gemini configuration
 
 ```env
 LLM_PROVIDER=gemini
@@ -431,12 +433,12 @@ LLM_MODEL=gemini-3.1-flash-lite
 GEMINI_API_KEY=your_gemini_key
 ```
 
-### Gemini configuration
+### OpenAI configuration
 
 ```env
-LLM_PROVIDER=gemini
-LLM_MODEL=gemini-3.1-flash-lite
-GEMINI_API_KEY=your_gemini_key
+LLM_PROVIDER=openai
+LLM_MODEL=gpt-4.1-mini
+OPENAI_API_KEY=your_openai_key
 ```
 
 Never commit `.env`. It is ignored by Git, and provider keys are not displayed
@@ -472,8 +474,8 @@ by the CLI or Streamlit interface.
 | `AGENT_PLANNING_FALLBACK_ENABLED` | `true` | Use deterministic planning after an LLM error or rejection |
 | `DEFAULT_TOP_K` | `4` | Maximum retrieved context chunks |
 | `MAX_RETRIEVAL_DISTANCE` | `1.2` | Largest accepted cosine distance |
-| `LLM_PROVIDER` | `openai` | `openai` or `gemini` |
-| `LLM_MODEL` | `gpt-4.1-mini` | Selected provider model |
+| `LLM_PROVIDER` | `gemini` | `openai` or `gemini` |
+| `LLM_MODEL` | `gemini-3.1-flash-lite` | Selected provider model |
 | `OPENAI_API_KEY` | empty | OpenAI credential used only for answers |
 | `GEMINI_API_KEY` | empty | Gemini credential used only for answers |
 | `ANSWER_TEMPERATURE` | `0.2` | LLM generation temperature, from 0 to 2 |
@@ -586,7 +588,7 @@ no-information message and does not build a provider or call an LLM.
 ## Streamlit interface
 
 ```bash
-streamlit run app/ui.py
+python -m streamlit run streamlit_app.py
 ```
 
 Use the sidebar to upload one or more PDF, TXT, or Markdown files and select
@@ -616,13 +618,13 @@ The interface shows the selected models but never API keys. It also states that
 retrieved chunks are sent to the selected external provider for answer
 generation.
 
-## Deploy to Hugging Face Spaces
+## Optional Docker Deployment (Hugging Face Spaces)
 
 This repository is ready to run as a Docker Space on the free CPU Basic tier.
 The container starts the existing Streamlit entry point with:
 
 ```bash
-streamlit run app/ui.py --server.address=0.0.0.0 --server.port=7860
+python -m streamlit run streamlit_app.py --server.address=0.0.0.0 --server.port=7860
 ```
 
 The application uses ChromaDB (not FAISS) as its persistent vector store.
@@ -691,7 +693,7 @@ cp project-plan.pdf data/
 python -m app.main index data
 python -m app.main search "delivery date" --collection general
 python -m app.main ask "When is the delivery date?" --collection general
-streamlit run app/ui.py
+python -m streamlit run streamlit_app.py
 ```
 
 ## Tests
