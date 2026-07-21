@@ -17,12 +17,17 @@ from app.agent.planning_service import AgentPlanningServiceError
 from app.config import ConfigurationError, Settings, get_settings
 from app.services.answering import AnswerGenerationError, AnswerResult
 from app.services.collection_selection import CollectionSelectionResult
+from app.services.collections import CollectionRegistry
 from app.services.cross_collection import (
     CrossCollectionRetrievalError,
     CrossCollectionRetrievalResponse,
 )
 from app.services.embeddings import EmbeddingError
 from app.services.llm_providers import LLMProviderError
+from app.services.index_monitoring import (
+    IndexedDataSummary,
+    load_indexed_data_summary,
+)
 from app.services.retrieval import RetrievalResult
 from app.services.routing import RoutingDecision
 from app.services.runtime import (
@@ -38,6 +43,7 @@ from app.services.vector_store import VectorStoreError
 _PROCESSING_KEY = "is_processing"
 _OUTCOME_KEY = "request_outcome"
 _ERROR_KEY = "request_error"
+_INDEX_SUMMARY_KEY = "indexed_data_summary"
 _REQUEST_ERRORS = (
     AnswerGenerationError,
     AgentPlanningServiceError,
@@ -116,6 +122,7 @@ def main() -> None:
         )
         if st.button("Index documents", disabled=not uploaded_files):
             _index_uploaded_files(uploaded_files, settings, selected_collection)
+        _render_indexed_documents(settings, registry)
         st.divider()
         st.subheader("Configuration")
         st.text(f"LLM provider: {settings.llm_provider}")
@@ -155,6 +162,58 @@ def _initialize_request_state() -> None:
     """Initialize session-scoped submission state once."""
     if _PROCESSING_KEY not in st.session_state:
         st.session_state[_PROCESSING_KEY] = False
+
+
+def _render_indexed_documents(
+    settings: Settings, registry: CollectionRegistry
+) -> None:
+    """Render a compact, cached, read-only view of existing indexed documents."""
+    with st.expander("Indexed Documents", expanded=False):
+        if st.button("Refresh indexed data"):
+            st.session_state.pop(_INDEX_SUMMARY_KEY, None)
+        if _INDEX_SUMMARY_KEY not in st.session_state:
+            st.session_state[_INDEX_SUMMARY_KEY] = load_indexed_data_summary(
+                settings.chroma_persist_dir, registry
+            )
+        summary = st.session_state[_INDEX_SUMMARY_KEY]
+        if not isinstance(summary, IndexedDataSummary):
+            st.warning("Indexed data summary is unavailable.")
+            return
+        _render_indexed_data_summary(summary)
+
+
+def _render_indexed_data_summary(summary: IndexedDataSummary) -> None:
+    """Display only aggregate counts and safe filenames from a summary."""
+    st.caption("Summary")
+    st.text(
+        "Collections: "
+        f"{summary.configured_collection_count} configured / "
+        f"{summary.active_collection_count} active"
+    )
+    st.text(f"Documents: {summary.unique_document_count}")
+    st.text(f"Chunks: {summary.total_chunk_count}")
+    if summary.has_access_errors:
+        st.warning("Some indexed data could not be read.")
+
+    for collection in summary.collections:
+        st.markdown(f"**{collection.logical_name}**")
+        st.caption(f"Chroma collection: {collection.physical_name}")
+        if collection.status == "missing":
+            st.caption("Not created yet")
+        elif collection.status == "unavailable":
+            st.caption("Unavailable")
+        elif collection.status == "empty":
+            st.caption("No indexed documents (0 chunks)")
+        else:
+            document_label = (
+                "document" if collection.document_count == 1 else "documents"
+            )
+            st.caption(
+                f"{collection.document_count} {document_label} · "
+                f"{collection.chunk_count} chunks"
+            )
+            for filename in collection.filenames:
+                st.text(f"• {filename}")
 
 
 def _submit_disabled(question: str) -> bool:
@@ -448,6 +507,7 @@ def _index_uploaded_files(
             st.info(message)
         else:
             st.success(f"{message} ({result.stored_chunks} chunk(s))")
+    st.session_state.pop(_INDEX_SUMMARY_KEY, None)
 
 
 if __name__ == "__main__":

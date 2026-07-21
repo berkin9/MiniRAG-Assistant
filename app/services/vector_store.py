@@ -14,6 +14,14 @@ class VectorStoreError(RuntimeError):
 
 
 @dataclass(frozen=True)
+class ChromaCollectionInspection:
+    """Read-only collection counts and metadata needed for monitoring."""
+
+    chunk_count: int
+    metadatas: tuple[Mapping[str, Any], ...]
+
+
+@dataclass(frozen=True)
 class VectorSearchResult:
     """A vector match independent of ChromaDB's response format."""
 
@@ -32,6 +40,47 @@ def normalize_metadata(metadata: ChunkMetadata) -> dict[str, ChromaValue]:
         else:
             normalized[key] = "" if value is None else value
     return normalized
+
+
+class ChromaIndexInspector:
+    """Read existing Chroma collections without creating or modifying them."""
+
+    def __init__(self, persist_directory: str | Path) -> None:
+        try:
+            import chromadb
+
+            self._client = chromadb.PersistentClient(path=str(persist_directory))
+        except Exception as error:
+            raise VectorStoreError("Could not access ChromaDB") from error
+
+    def list_collection_names(self) -> tuple[str, ...]:
+        """Return physical collection names already present in ChromaDB."""
+        try:
+            collections = self._client.list_collections()
+            return tuple(
+                str(getattr(collection, "name", collection))
+                for collection in collections
+            )
+        except Exception as error:
+            raise VectorStoreError("Could not list ChromaDB collections") from error
+
+    def inspect_collection(self, name: str) -> ChromaCollectionInspection:
+        """Read only a collection's count and metadata, never its documents."""
+        try:
+            collection = self._client.get_collection(name=name)
+            chunk_count = int(collection.count())
+            response = collection.get(include=["metadatas"])
+            raw_metadatas = response.get("metadatas") or ()
+            metadatas = tuple(
+                metadata
+                for metadata in raw_metadatas
+                if isinstance(metadata, Mapping)
+            )
+            return ChromaCollectionInspection(chunk_count, metadatas)
+        except Exception as error:
+            raise VectorStoreError(
+                f"Could not inspect ChromaDB collection {name!r}"
+            ) from error
 
 
 class ChromaVectorStore:
