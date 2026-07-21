@@ -213,6 +213,45 @@ def test_display_rendering_replaces_only_exact_validated_tokens() -> None:
     )
 
 
+@pytest.mark.parametrize(
+    "grouped",
+    (
+        "[Source 1, Source 2]",
+        "[Source 1; Source 2]",
+        "[Source 1 and Source 2]",
+    ),
+)
+def test_grouped_known_display_citations_are_safely_expanded(grouped: str) -> None:
+    """Provider grouping should normalize only exact known source labels."""
+    mapping = {
+        "TECH-01-C1-A1B2C3": "Source 1",
+        "POLI-02-C2-D4E5F6": "Source 2",
+    }
+
+    normalized, validation = validate_and_repair_citations(
+        f"Grounded statement {grouped}.", mapping
+    )
+
+    assert normalized == (
+        "Grounded statement [TECH-01-C1-A1B2C3] [POLI-02-C2-D4E5F6]."
+    )
+    assert validation.valid is True
+    assert validation.repaired is True
+    assert validation.used_citation_ids == tuple(mapping)
+
+
+def test_grouped_citation_with_unknown_member_remains_invalid() -> None:
+    """Grouping must not make an invented or unavailable source acceptable."""
+    mapping = {"TECH-01-C1-A1B2C3": "Source 1"}
+
+    _, validation = validate_and_repair_citations(
+        "Claim [Source 1, Source 99].", mapping
+    )
+
+    assert validation.valid is False
+    assert validation.malformed_citations == ("[Source 1, Source 99]",)
+
+
 class ControlledProvider:
     """Return controlled answer text while recording exact call count."""
 

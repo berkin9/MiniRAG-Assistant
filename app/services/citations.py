@@ -9,7 +9,7 @@ from app.services.retrieval import RetrievalResult
 
 _STABLE_ID = re.compile(r"^[A-Z0-9]{2,8}-\d{2,4}-C\d+-[A-F0-9]{6}$")
 _DISPLAY_LABEL = re.compile(r"^Source\s+(\d+)$", re.IGNORECASE)
-_BRACKET_TOKEN = re.compile(r"\[([^\[\]\n]{1,80})\]")
+_BRACKET_TOKEN = re.compile(r"\[([^\[\]\n]{1,240})\]")
 _CITATION_LIKE = re.compile(
     r"^(?:source\b|[A-Za-z0-9]{2,8}[- ]\d|[A-Za-z0-9-]*-C\d+)",
     re.IGNORECASE,
@@ -76,6 +76,14 @@ def validate_and_repair_citations(
             repaired = True
         elif _STABLE_ID.fullmatch(token) or _DISPLAY_LABEL.fullmatch(token):
             unknown.append(token)
+        elif grouped_ids := _resolve_grouped_citations(
+            token,
+            citation_id_to_display_label,
+            display_to_id,
+        ):
+            repaired = True
+            used.extend(grouped_ids)
+            return " ".join(f"[{grouped_id}]" for grouped_id in grouped_ids)
         elif _CITATION_LIKE.search(token):
             malformed.append(original)
         else:
@@ -97,7 +105,11 @@ def validate_and_repair_citations(
             or normalized_answer[match.end()] != "]"
         ):
             malformed.append(match.group(0))
-    malformed.extend(match.group(0) for match in _UNCLOSED_SOURCE.finditer(answer))
+    text_without_closed_brackets = _BRACKET_TOKEN.sub("", answer)
+    malformed.extend(
+        match.group(0)
+        for match in _UNCLOSED_SOURCE.finditer(text_without_closed_brackets)
+    )
     result = CitationValidationResult(
         valid=not unknown and not malformed,
         used_citation_ids=_unique(used),
@@ -106,6 +118,30 @@ def validate_and_repair_citations(
         repaired=repaired,
     )
     return normalized_answer, result
+
+
+def _resolve_grouped_citations(
+    token: str,
+    citation_id_to_display_label: dict[str, str],
+    display_to_id: dict[str, str],
+) -> tuple[str, ...]:
+    """Resolve a grouped citation only when every member is already known."""
+    members = tuple(
+        member.strip()
+        for member in re.split(r"\s*(?:,|;|\band\b)\s*", token)
+        if member.strip()
+    )
+    if len(members) < 2:
+        return ()
+    resolved: list[str] = []
+    for member in members:
+        if member in citation_id_to_display_label:
+            resolved.append(member)
+        elif member in display_to_id:
+            resolved.append(display_to_id[member])
+        else:
+            return ()
+    return _unique(resolved)
 
 
 def render_display_citations(
