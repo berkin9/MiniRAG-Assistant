@@ -1,3 +1,14 @@
+---
+title: MiniRAG Assistant
+emoji: 📚
+colorFrom: blue
+colorTo: indigo
+sdk: docker
+app_port: 7860
+suggested_hardware: cpu-basic
+short_description: Multi-RAG assistant with citations and agent planning
+---
+
 ![Python](https://img.shields.io/badge/Python-3.11-blue)
 ![RAG](https://img.shields.io/badge/RAG-Yes-success)
 ![Agentic AI](https://img.shields.io/badge/Agentic-AI-orange)
@@ -585,6 +596,74 @@ source citations.
 The interface shows the selected models but never API keys. It also states that
 retrieved chunks are sent to the selected external provider for answer
 generation.
+
+## Deploy to Hugging Face Spaces
+
+This repository is ready to run as a Docker Space on the free CPU Basic tier.
+The container starts the existing Streamlit entry point with:
+
+```bash
+streamlit run app/ui.py --server.address=0.0.0.0 --server.port=7860
+```
+
+The application uses ChromaDB (not FAISS) as its persistent vector store.
+Chroma's `get_or_create_collection` creates an empty index automatically on
+first indexing or retrieval, so no generated index needs to be committed.
+Uploaded PDF, TXT, and Markdown files are accepted by Streamlit, sanitized,
+saved under `data/uploads`, and indexed from there.
+
+### Space configuration
+
+1. Create a new Space at <https://huggingface.co/new-space> and choose
+   **Docker** with **CPU Basic** hardware.
+2. In the Space's **Settings → Secrets**, add the key for the provider you
+   use:
+   - `GEMINI_API_KEY` for Gemini
+   - `OPENAI_API_KEY` for OpenAI (optional when Gemini is selected)
+3. In **Settings → Variables**, configure the matching provider and model:
+
+   ```text
+   LLM_PROVIDER=gemini
+   LLM_MODEL=gemini-2.5-flash
+   ```
+
+   For OpenAI, use `LLM_PROVIDER=openai` and an OpenAI model such as
+   `gpt-4.1-mini`.
+4. Push this repository to the Space. The README metadata selects the Docker
+   SDK, and the `Dockerfile` builds and starts the app automatically.
+
+Hugging Face exposes Space secrets as environment variables, which the existing
+configuration loader already reads. Do not add API keys to `.env`, the
+`Dockerfile`, or the repository.
+
+Free Space disk is ephemeral: uploaded files and the generated Chroma index can
+be lost whenever the Space restarts. They are recreated automatically as users
+upload and index documents. For durable shared data, attach a storage volume and
+set `UPLOAD_DIR` and `CHROMA_PERSIST_DIR` to directories under its mount point.
+
+### Deploy from a clean clone
+
+Replace `HF_USERNAME` and `SPACE_NAME` below. The first push deploys the Space;
+later pushes rebuild it automatically.
+
+```bash
+git clone https://github.com/berkin9/MiniRAG-Assistant.git
+cd MiniRAG-Assistant
+
+python3.11 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -r requirements-dev.txt
+python -m pytest -q
+
+git remote add space https://huggingface.co/spaces/HF_USERNAME/SPACE_NAME
+git push space main
+```
+
+If the Space repository was created with an initial commit, use
+`git push space main --force-with-lease` only after confirming that its generated
+placeholder files can be replaced. Alternatively, clone the Space repository
+and copy this repository's tracked files into it before committing.
 
 ## Example workflow
 

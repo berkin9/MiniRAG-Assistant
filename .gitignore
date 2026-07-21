@@ -7,5 +7,8 @@ __pycache__/
 .chroma/
 .cache/
 .model-cache/
+.huggingface/
+reports/
+*.jsonl
 data/uploads/*
 !data/uploads/.gitkeep
