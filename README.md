@@ -30,10 +30,43 @@ grounded answer generation using external foundation models such as OpenAI GPT
 or Google Gemini.
 
 The project demonstrates how production AI systems are commonly built today:
-documents remain local, only retrieved evidence is sent to an external LLM, and
-every answer is grounded in verifiable sources.
+documents are processed within the application runtime. Only retrieved evidence chunks and the user’s question are sent to the configured external LLM provider.
 
+## Live Demo
 
+[Open MiniRAG Assistant on Streamlit Community Cloud]([DEPLOYED_APP_URL](https://minirag-assistant-79ryu9csxxnt8hclogc9gg.streamlit.app/))
+
+## Deploy to Streamlit Community Cloud
+
+- Repository: berkin9/MiniRAG-Assistant
+- Branch: main
+- Main file: streamlit_app.py
+- Python: 3.11
+
+## Try the demo
+
+Index the sample documents into:
+
+- sample → general
+- project → project
+- technical → technical
+- policies → policies
+
+Then enable:
+- Cross collection
+- Automatic routing
+- Use Agent
+
+Ask:
+
+> Compare the authentication implementation with the security policy requirements.
+
+## Quality
+
+- Full test suite: XXX passed
+- External API calls in tests: none
+- Deterministic fake embeddings/providers used for automated tests
+  
 ## AI capabilities
 
 - Retrieval-Augmented Generation (RAG)
@@ -76,26 +109,14 @@ This architecture reflects how many production AI systems are built today.
 
 ```mermaid
 flowchart TD
-
-    U[User]
-
-    UI[CLI / Streamlit]
-
-    PLAN[Agent Planning Layer<br/>Deterministic or LLM]
-
-    EXEC[Bounded Tool Executor]
-
-    ROUTE[Collection Router]
-
-    RETRIEVE[Multi-RAG Retrieval]
-
-    EMB[Local Embedding Service]
-
-    CHROMA[(ChromaDB)]
-
-    PROMPT[Prompt Builder]
-
-    LLM[OpenAI / Gemini]
+    U[User] --> UI[Streamlit / CLI]
+    UI --> PLAN[Agent Planning]
+    PLAN --> EXEC[Bounded Executor]
+    EXEC --> ROUTE[Collection Router]
+    ROUTE --> RETRIEVE[Multi-RAG Retrieval]
+    RETRIEVE --> CHROMA[(ChromaDB)]
+    RETRIEVE --> LLM[Gemini / OpenAI]
+    LLM --> ANSWER[Grounded Answer + Citations]
 
     ANSWER[Grounded Answer<br/>Stable Sources]
 
@@ -364,7 +385,7 @@ sequences before evaluation. One failing planner case is recorded by safe error
 type and does not stop later cases. Exported JSON and CSV include benchmark
 queries but never raw prompts, provider responses, credentials, or stack traces.
 
-When running `streamlit run app/ui.py`, Streamlit also discovers the separate
+When running `streamlit_app.py`, Streamlit also discovers the separate
 **Benchmark** page in `app/pages/benchmark.py`. It can run either configured
 planner, display summary metrics, confidence calibration and plan distribution,
 and download JSON or CSV without changing the existing RAG page.
@@ -405,18 +426,16 @@ No LLM key is needed for `ingest`, `index`, or `search`.
 ### OpenAI configuration
 
 ```env
-LLM_PROVIDER=openai
-LLM_MODEL=gpt-4.1-mini
-OPENAI_API_KEY=your_openai_key
-GEMINI_API_KEY=
+LLM_PROVIDER=gemini
+LLM_MODEL=gemini-3.1-flash-lite
+GEMINI_API_KEY=your_gemini_key
 ```
 
 ### Gemini configuration
 
 ```env
 LLM_PROVIDER=gemini
-LLM_MODEL=gemini-2.5-flash
-OPENAI_API_KEY=
+LLM_MODEL=gemini-3.1-flash-lite
 GEMINI_API_KEY=your_gemini_key
 ```
 
@@ -624,7 +643,7 @@ saved under `data/uploads`, and indexed from there.
 
    ```text
    LLM_PROVIDER=gemini
-   LLM_MODEL=gemini-2.5-flash
+   LLM_MODEL=gemini-3.1-flash
    ```
 
    For OpenAI, use `LLM_PROVIDER=openai` and an OpenAI model such as
