@@ -91,11 +91,12 @@ def test_shared_demo_status_is_compact_and_safe(
     assert "/" not in " ".join(captions)
 
 
-def test_shared_demo_startup_check_is_cached_per_process(
+def test_successful_demo_startup_check_runs_once_per_session(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     calls = 0
     expected = DemoIndexingResult(4, 4, 0, 0)
+    fake_st = type("FakeSessionStreamlit", (), {"session_state": {}})()
 
     def ensure(settings: Settings, registry: object) -> DemoIndexingResult:
         nonlocal calls
@@ -104,14 +105,83 @@ def test_shared_demo_startup_check_is_cached_per_process(
         return expected
 
     monkeypatch.setattr(ui, "ensure_demo_documents_indexed", ensure)
-    ui._ensure_shared_demo_documents.clear()
-    try:
-        assert ui._ensure_shared_demo_documents(Settings()) == expected
-        assert ui._ensure_shared_demo_documents(Settings()) == expected
-    finally:
-        ui._ensure_shared_demo_documents.clear()
+    monkeypatch.setattr(ui, "st", fake_st)
+
+    assert ui._run_demo_startup_indexing(Settings()) == expected
+    assert ui._run_demo_startup_indexing(Settings()) == expected
 
     assert calls == 1
+
+
+def test_demo_startup_respects_disabled_auto_index_setting(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls = 0
+    disabled = DemoIndexingResult(0, 0, 0, 0)
+    fake_st = type("FakeSessionStreamlit", (), {"session_state": {}})()
+
+    def ensure(settings: Settings, registry: object) -> DemoIndexingResult:
+        nonlocal calls
+        del registry
+        calls += 1
+        assert settings.auto_index_demo_documents is False
+        return disabled
+
+    monkeypatch.setattr(ui, "ensure_demo_documents_indexed", ensure)
+    monkeypatch.setattr(ui, "st", fake_st)
+
+    result = ui._run_demo_startup_indexing(
+        Settings(auto_index_demo_documents=False)
+    )
+
+    assert result == disabled
+    assert calls == 1
+
+
+def test_failed_demo_startup_check_is_retried_on_next_rerun(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    failed = DemoIndexingResult(
+        4, 0, 0, 1, ("policies/policy.md: RuntimeError",)
+    )
+    recovered = DemoIndexingResult(4, 3, 1, 0)
+    results = iter((failed, recovered))
+    calls = 0
+    fake_st = type("FakeSessionStreamlit", (), {"session_state": {}})()
+
+    def ensure(settings: Settings, registry: object) -> DemoIndexingResult:
+        nonlocal calls
+        del settings, registry
+        calls += 1
+        return next(results)
+
+    monkeypatch.setattr(ui, "ensure_demo_documents_indexed", ensure)
+    monkeypatch.setattr(ui, "st", fake_st)
+
+    assert ui._run_demo_startup_indexing(Settings()) == failed
+    assert ui._run_demo_startup_indexing(Settings()) == recovered
+    assert ui._run_demo_startup_indexing(Settings()) == recovered
+    assert calls == 2
+
+
+def test_new_session_reports_existing_demo_documents_as_skipped(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    first = DemoIndexingResult(4, 4, 0, 0)
+    later = DemoIndexingResult(4, 0, 4, 0)
+    results = iter((first, later))
+    fake_st = type("FakeSessionStreamlit", (), {"session_state": {}})()
+
+    monkeypatch.setattr(
+        ui,
+        "ensure_demo_documents_indexed",
+        lambda settings, registry: next(results),
+    )
+    monkeypatch.setattr(ui, "st", fake_st)
+
+    assert ui._run_demo_startup_indexing(Settings()) == first
+    fake_st.session_state = {}
+    assert ui._run_demo_startup_indexing(Settings()) == later
 
 
 def _planned(

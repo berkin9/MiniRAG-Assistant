@@ -93,12 +93,16 @@ def ensure_demo_documents_indexed(
     settings: Settings,
     registry: CollectionRegistry,
     *,
+    enabled: bool | None = None,
     embedder_factory: Callable[[str], DocumentEmbedder] = EmbeddingService,
     store_factory: Callable[[str], IndexVectorStore] | None = None,
     indexer: DocumentIndexer = index_document,
 ) -> DemoIndexingResult:
     """Index each predefined demo file once and isolate expected file failures."""
-    if not settings.auto_index_demo_documents:
+    should_index = (
+        settings.auto_index_demo_documents if enabled is None else enabled
+    )
+    if not should_index:
         return DemoIndexingResult(0, 0, 0, 0)
 
     documents = discover_demo_documents(settings.demo_data_dir, registry)

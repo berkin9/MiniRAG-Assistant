@@ -186,6 +186,7 @@ def _run_demo_index(settings: Settings) -> DemoIndexingResult:
     result = ensure_demo_documents_indexed(
         settings,
         build_collection_registry(settings),
+        enabled=True,
     )
     print(f"Discovered: {result.discovered_documents}")
     print(f"Indexed: {result.indexed_documents}")

@@ -49,6 +49,7 @@ _PROCESSING_KEY = "is_processing"
 _OUTCOME_KEY = "request_outcome"
 _ERROR_KEY = "request_error"
 _INDEX_SUMMARY_KEY = "indexed_data_summary"
+_DEMO_STARTUP_RESULT_KEY = "demo_startup_indexing_result"
 _REQUEST_ERRORS = (
     AnswerGenerationError,
     AgentPlanningServiceError,
@@ -75,7 +76,7 @@ def main() -> None:
         st.error(str(error))
         return
     registry = build_collection_registry(settings)
-    demo_result = _ensure_shared_demo_documents(settings)
+    demo_result = _run_demo_startup_indexing(settings)
     _initialize_request_state()
 
     with st.sidebar:
@@ -172,22 +173,29 @@ def main() -> None:
     _render_saved_submission(automatic_routing)
 
 
-@st.cache_resource(show_spinner=False)
-def _ensure_shared_demo_documents(_settings: Settings) -> DemoIndexingResult:
-    """Run one demo-index check per Streamlit application process."""
+def _run_demo_startup_indexing(settings: Settings) -> DemoIndexingResult:
+    """Run once per session, retrying failures on the next Streamlit rerun."""
+    saved = st.session_state.get(_DEMO_STARTUP_RESULT_KEY)
+    if isinstance(saved, DemoIndexingResult):
+        return saved
     try:
-        return ensure_demo_documents_indexed(
-            _settings,
-            build_collection_registry(_settings),
+        result = ensure_demo_documents_indexed(
+            settings,
+            build_collection_registry(settings),
         )
     except (DemoIndexingError, OSError, RuntimeError, ValueError) as error:
-        return DemoIndexingResult(
+        result = DemoIndexingResult(
             discovered_documents=0,
             indexed_documents=0,
             skipped_documents=0,
             failed_documents=1,
             errors=(f"Demo indexing could not start: {type(error).__name__}",),
         )
+    if result.failed_documents == 0:
+        st.session_state[_DEMO_STARTUP_RESULT_KEY] = result
+    else:
+        st.session_state.pop(_DEMO_STARTUP_RESULT_KEY, None)
+    return result
 
 
 def _render_shared_demo_status(

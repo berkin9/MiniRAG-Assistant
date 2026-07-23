@@ -159,6 +159,30 @@ def test_disabled_mode_does_not_scan_or_build_services(tmp_path: Path) -> None:
     assert result == DemoIndexingResult(0, 0, 0, 0)
 
 
+def test_explicit_enable_override_indexes_when_auto_start_is_disabled(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "demo"
+    _write(root / "general" / "document.md")
+    embedder = FixedEmbedder()
+    store = MemoryStore()
+
+    result = ensure_demo_documents_indexed(
+        Settings(
+            demo_data_dir=root,
+            auto_index_demo_documents=False,
+        ),
+        _registry(),
+        enabled=True,
+        embedder_factory=lambda model: embedder,
+        store_factory=lambda collection: store,
+    )
+
+    assert result == DemoIndexingResult(1, 1, 0, 0)
+    assert embedder.calls == 1
+    assert store.chunk_count == 1
+
+
 def test_upload_directory_is_never_scanned(tmp_path: Path) -> None:
     demo_root = tmp_path / "demo"
     upload_root = tmp_path / "uploads"

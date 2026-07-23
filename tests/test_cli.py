@@ -147,17 +147,31 @@ def test_demo_index_command_prints_counts_and_keeps_file_failures_successful(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """Per-file demo failures should be visible without failing the command."""
-    monkeypatch.setattr(cli, "get_settings", Settings)
     monkeypatch.setattr(
         cli,
-        "ensure_demo_documents_indexed",
-        lambda settings, registry: DemoIndexingResult(
+        "get_settings",
+        lambda: Settings(auto_index_demo_documents=False),
+    )
+    captured_enabled: list[bool | None] = []
+
+    def ensure(
+        settings: Settings, registry: object, *, enabled: bool | None = None
+    ) -> DemoIndexingResult:
+        assert settings.auto_index_demo_documents is False
+        del registry
+        captured_enabled.append(enabled)
+        return DemoIndexingResult(
             4,
             2,
             1,
             1,
             ("policies/broken.md: EmptyDocumentError",),
-        ),
+        )
+
+    monkeypatch.setattr(
+        cli,
+        "ensure_demo_documents_indexed",
+        ensure,
     )
 
     assert cli.main(["demo-index"]) == 0
@@ -169,6 +183,7 @@ def test_demo_index_command_prints_counts_and_keeps_file_failures_successful(
         "Failed: 1",
     ]
     assert "policies/broken.md: EmptyDocumentError" in captured.err
+    assert captured_enabled == [True]
 
 
 def test_demo_index_command_returns_nonzero_when_discovery_cannot_start(
@@ -178,7 +193,7 @@ def test_demo_index_command_returns_nonzero_when_discovery_cannot_start(
     monkeypatch.setattr(
         cli,
         "ensure_demo_documents_indexed",
-        lambda settings, registry: (_ for _ in ()).throw(
+        lambda settings, registry, **kwargs: (_ for _ in ()).throw(
             DemoIndexingError("Demo data path is not a directory")
         ),
     )
