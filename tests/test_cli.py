@@ -22,6 +22,7 @@ from app.agent.planned_agent import PlannedAgentResult
 from app.config import ConfigurationError, Settings
 from app.services.answering import AnswerResult
 from app.services.context_builder import AnswerSource
+from app.services.demo_indexing import DemoIndexingError, DemoIndexingResult
 from app.services.retrieval import RetrievalResponse
 from app.services.routing import RoutingDecision
 from app.services.runtime import RoutedAnswer, RoutedSearch
@@ -140,6 +141,50 @@ def test_existing_commands_still_dispatch(
 
     assert cli.main(arguments) == 0
     assert calls == [arguments[0]]
+
+
+def test_demo_index_command_prints_counts_and_keeps_file_failures_successful(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Per-file demo failures should be visible without failing the command."""
+    monkeypatch.setattr(cli, "get_settings", Settings)
+    monkeypatch.setattr(
+        cli,
+        "ensure_demo_documents_indexed",
+        lambda settings, registry: DemoIndexingResult(
+            4,
+            2,
+            1,
+            1,
+            ("policies/broken.md: EmptyDocumentError",),
+        ),
+    )
+
+    assert cli.main(["demo-index"]) == 0
+    captured = capsys.readouterr()
+    assert captured.out.splitlines() == [
+        "Discovered: 4",
+        "Indexed: 2",
+        "Skipped: 1",
+        "Failed: 1",
+    ]
+    assert "policies/broken.md: EmptyDocumentError" in captured.err
+
+
+def test_demo_index_command_returns_nonzero_when_discovery_cannot_start(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr(cli, "get_settings", Settings)
+    monkeypatch.setattr(
+        cli,
+        "ensure_demo_documents_indexed",
+        lambda settings, registry: (_ for _ in ()).throw(
+            DemoIndexingError("Demo data path is not a directory")
+        ),
+    )
+
+    assert cli.main(["demo-index"]) == 1
+    assert "Demo data path is not a directory" in capsys.readouterr().err
 
 
 def test_collection_argument_is_passed_to_index(

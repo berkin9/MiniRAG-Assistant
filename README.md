@@ -449,6 +449,8 @@ by the CLI or Streamlit interface.
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `DATA_DIR` | `data` | Default local document directory |
+| `DEMO_DATA_DIR` | `data/demo` | Predefined documents grouped by logical collection |
+| `AUTO_INDEX_DEMO_DOCUMENTS` | `true` | Index predefined demo documents at application startup |
 | `UPLOAD_DIR` | `data/uploads` | Managed Streamlit upload directory |
 | `MAX_UPLOAD_SIZE_MB` | `10` | Per-file application upload limit |
 | `CHUNK_SIZE` | `800` | Maximum characters per chunk |
@@ -617,6 +619,39 @@ source citations.
 The interface shows the selected models but never API keys. It also states that
 retrieved chunks are sent to the selected external provider for answer
 generation.
+
+## Shared demo documents
+
+Small fictional demo files live under `data/demo/<collection>/`, with one
+directory for each configured logical collection. At Streamlit startup the app
+uses the existing loader, chunker, embedding service, collection registry,
+Chroma store, and document indexer to make these files available to every
+visitor of the same deployed application.
+
+SHA-256 duplicate detection prevents unchanged documents from being indexed
+again. Generated `.chroma` data remains local runtime state and is not committed.
+Files uploaded through Streamlit remain under `data/uploads`; they are not
+copied into or added to the predefined shared demo dataset.
+
+Disable automatic startup indexing with:
+
+```bash
+AUTO_INDEX_DEMO_DOCUMENTS=false python -m streamlit run streamlit_app.py
+```
+
+The same check can be run explicitly:
+
+```bash
+python -m app.main demo-index
+```
+
+Ready-to-use questions:
+
+- What is the objective of the project?
+- When is V1 planned to be completed?
+- How is authentication implemented?
+- What are the security access requirements?
+- Compare the authentication implementation with the security policy requirements.
 
 ## Optional Docker Deployment (Hugging Face Spaces)
 

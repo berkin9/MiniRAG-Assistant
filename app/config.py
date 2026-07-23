@@ -13,6 +13,8 @@ from app.services.collections import CollectionRegistry
 DEFAULT_CHUNK_SIZE = 800
 DEFAULT_CHUNK_OVERLAP = 150
 DEFAULT_EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
+DEFAULT_DEMO_DATA_DIR = Path("data/demo")
+DEFAULT_AUTO_INDEX_DEMO_DOCUMENTS = True
 DEFAULT_COLLECTION_NAME = "minirag_documents"
 DEFAULT_TOP_K = 4
 DEFAULT_MAX_RETRIEVAL_DISTANCE = 1.2
@@ -60,6 +62,8 @@ class Settings:
     """Runtime settings for local document processing."""
 
     data_dir: Path = Path("data")
+    demo_data_dir: Path = DEFAULT_DEMO_DATA_DIR
+    auto_index_demo_documents: bool = DEFAULT_AUTO_INDEX_DEMO_DOCUMENTS
     chunk_size: int = DEFAULT_CHUNK_SIZE
     chunk_overlap: int = DEFAULT_CHUNK_OVERLAP
     embedding_model: str = DEFAULT_EMBEDDING_MODEL
@@ -258,6 +262,10 @@ def get_settings() -> Settings:
     load_dotenv()
     return Settings(
         data_dir=Path(os.getenv("DATA_DIR", "data")),
+        demo_data_dir=Path(os.getenv("DEMO_DATA_DIR", str(DEFAULT_DEMO_DATA_DIR))),
+        auto_index_demo_documents=_read_bool(
+            "AUTO_INDEX_DEMO_DOCUMENTS", DEFAULT_AUTO_INDEX_DEMO_DOCUMENTS
+        ),
         chunk_size=_read_int("CHUNK_SIZE", DEFAULT_CHUNK_SIZE),
         chunk_overlap=_read_int("CHUNK_OVERLAP", DEFAULT_CHUNK_OVERLAP),
         embedding_model=os.getenv("EMBEDDING_MODEL", DEFAULT_EMBEDDING_MODEL),

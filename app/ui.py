@@ -22,6 +22,11 @@ from app.services.cross_collection import (
     CrossCollectionRetrievalError,
     CrossCollectionRetrievalResponse,
 )
+from app.services.demo_indexing import (
+    DemoIndexingError,
+    DemoIndexingResult,
+    ensure_demo_documents_indexed,
+)
 from app.services.embeddings import EmbeddingError
 from app.services.llm_providers import LLMProviderError
 from app.services.index_monitoring import (
@@ -69,11 +74,15 @@ def main() -> None:
     except ConfigurationError as error:
         st.error(str(error))
         return
+    registry = build_collection_registry(settings)
+    demo_result = _ensure_shared_demo_documents(settings)
     _initialize_request_state()
 
     with st.sidebar:
+        _render_shared_demo_status(
+            demo_result, settings.auto_index_demo_documents
+        )
         st.header("Documents")
-        registry = build_collection_registry(settings)
         selected_collection = st.selectbox(
             "Indexing collection",
             options=registry.list_collections(),
@@ -122,6 +131,11 @@ def main() -> None:
         )
         if st.button("Index documents", disabled=not uploaded_files):
             _index_uploaded_files(uploaded_files, settings, selected_collection)
+        st.caption(
+            "Demo documents are shared by all visitors. Files uploaded through "
+            "this interface belong to the current application deployment and "
+            "are not added to the shared demo dataset."
+        )
         _render_indexed_documents(settings, registry)
         st.divider()
         st.subheader("Configuration")
@@ -156,6 +170,46 @@ def main() -> None:
         )
         st.rerun()
     _render_saved_submission(automatic_routing)
+
+
+@st.cache_resource(show_spinner=False)
+def _ensure_shared_demo_documents(_settings: Settings) -> DemoIndexingResult:
+    """Run one demo-index check per Streamlit application process."""
+    try:
+        return ensure_demo_documents_indexed(
+            _settings,
+            build_collection_registry(_settings),
+        )
+    except (DemoIndexingError, OSError, RuntimeError, ValueError) as error:
+        return DemoIndexingResult(
+            discovered_documents=0,
+            indexed_documents=0,
+            skipped_documents=0,
+            failed_documents=1,
+            errors=(f"Demo indexing could not start: {type(error).__name__}",),
+        )
+
+
+def _render_shared_demo_status(
+    result: DemoIndexingResult, enabled: bool
+) -> None:
+    """Show safe shared-demo startup counts without internal identifiers."""
+    st.subheader("Shared demo documents")
+    if not enabled:
+        st.caption("Automatic demo indexing is disabled.")
+        return
+    st.caption(
+        f"{result.discovered_documents} available · "
+        f"{result.indexed_documents} newly indexed · "
+        f"{result.skipped_documents} already indexed"
+        + (
+            f" · {result.failed_documents} failed"
+            if result.failed_documents
+            else ""
+        )
+    )
+    for error in result.errors:
+        st.warning(error)
 
 
 def _initialize_request_state() -> None:

@@ -27,6 +27,11 @@ from app.services.cross_collection import (
     CrossCollectionRetrievalResponse,
 )
 from app.services.document_loader import DocumentLoadError
+from app.services.demo_indexing import (
+    DemoIndexingError,
+    DemoIndexingResult,
+    ensure_demo_documents_indexed,
+)
 from app.services.embeddings import EmbeddingError, EmbeddingService
 from app.services.indexing import IndexingError, index_directory, index_document
 from app.services.ingestion import (
@@ -58,6 +63,9 @@ def build_parser() -> argparse.ArgumentParser:
     index_parser = subparsers.add_parser("index", help="Index a file or directory")
     index_parser.add_argument("path", nargs="?", help="File or directory to index")
     index_parser.add_argument("--collection", help="Logical RAG collection")
+    subparsers.add_parser(
+        "demo-index", help="Index predefined shared demo documents"
+    )
     search_parser = subparsers.add_parser("search", help="Search indexed documents")
     search_parser.add_argument("query", help="Natural-language search query")
     search_parser.add_argument("--top-k", type=int, help="Maximum results to return")
@@ -171,6 +179,21 @@ def _run_index(
         )
     print(f"Documents processed: {len(results)}")
     print(f"Chunks stored: {sum(result.stored_chunks for result in results)}")
+
+
+def _run_demo_index(settings: Settings) -> DemoIndexingResult:
+    """Run the shared demo service and print its safe aggregate outcome."""
+    result = ensure_demo_documents_indexed(
+        settings,
+        build_collection_registry(settings),
+    )
+    print(f"Discovered: {result.discovered_documents}")
+    print(f"Indexed: {result.indexed_documents}")
+    print(f"Skipped: {result.skipped_documents}")
+    print(f"Failed: {result.failed_documents}")
+    for error in result.errors:
+        print(f"Warning: {error}", file=sys.stderr)
+    return result
 
 
 def _run_search(
@@ -463,6 +486,8 @@ def main(argv: list[str] | None = None) -> int:
             )
         elif args.command == "index":
             _run_index(args.path or settings.data_dir, settings, args.collection)
+        elif args.command == "demo-index":
+            _run_demo_index(settings)
         elif args.command == "search":
             top_k = args.top_k if args.top_k is not None else settings.default_top_k
             collections = _parse_collections(args.collections)
@@ -513,6 +538,7 @@ def main(argv: list[str] | None = None) -> int:
             )
     except (
         ConfigurationError,
+        DemoIndexingError,
         DirectoryNotFoundError,
         DocumentLoadError,
         EmbeddingError,

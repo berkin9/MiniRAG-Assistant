@@ -21,6 +21,7 @@ from app.agent.planner_models import (
 from app.agent.planned_agent import PlannedAgentResult
 from app.config import Settings
 from app.services.answering import AnswerResult
+from app.services.demo_indexing import DemoIndexingResult
 from app.services.routing import RoutingDecision
 from app.services.runtime import RoutedAnswer
 
@@ -61,6 +62,56 @@ def _routed_answer() -> RoutedAnswer:
         AnswerResult("question", "answer", (), False, "technical"),
         RoutingDecision("technical", "Matched technical terms."),
     )
+
+
+def test_shared_demo_status_is_compact_and_safe(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captions: list[str] = []
+    warnings: list[str] = []
+    monkeypatch.setattr(ui.st, "subheader", lambda value: None)
+    monkeypatch.setattr(ui.st, "caption", captions.append)
+    monkeypatch.setattr(ui.st, "warning", warnings.append)
+
+    ui._render_shared_demo_status(
+        DemoIndexingResult(
+            4,
+            1,
+            2,
+            1,
+            ("policies/broken.md: EmptyDocumentError",),
+        ),
+        enabled=True,
+    )
+
+    assert captions == [
+        "4 available · 1 newly indexed · 2 already indexed · 1 failed"
+    ]
+    assert warnings == ["policies/broken.md: EmptyDocumentError"]
+    assert "/" not in " ".join(captions)
+
+
+def test_shared_demo_startup_check_is_cached_per_process(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls = 0
+    expected = DemoIndexingResult(4, 4, 0, 0)
+
+    def ensure(settings: Settings, registry: object) -> DemoIndexingResult:
+        nonlocal calls
+        del settings, registry
+        calls += 1
+        return expected
+
+    monkeypatch.setattr(ui, "ensure_demo_documents_indexed", ensure)
+    ui._ensure_shared_demo_documents.clear()
+    try:
+        assert ui._ensure_shared_demo_documents(Settings()) == expected
+        assert ui._ensure_shared_demo_documents(Settings()) == expected
+    finally:
+        ui._ensure_shared_demo_documents.clear()
+
+    assert calls == 1
 
 
 def _planned(

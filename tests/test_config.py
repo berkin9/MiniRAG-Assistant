@@ -91,6 +91,31 @@ def test_collection_configuration_is_normalized(
     assert settings.rag_collections == ("general", "project", "technical-docs")
 
 
+def test_demo_indexing_configuration_uses_defaults_and_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Shared demo settings should follow existing path and boolean parsing."""
+    defaults = get_settings()
+    assert defaults.demo_data_dir.as_posix() == "data/demo"
+    assert defaults.auto_index_demo_documents is True
+
+    monkeypatch.setenv("DEMO_DATA_DIR", "fixtures/shared-demo")
+    monkeypatch.setenv("AUTO_INDEX_DEMO_DOCUMENTS", "false")
+    configured = get_settings()
+
+    assert configured.demo_data_dir.as_posix() == "fixtures/shared-demo"
+    assert configured.auto_index_demo_documents is False
+
+
+def test_invalid_demo_indexing_boolean_is_rejected(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("AUTO_INDEX_DEMO_DOCUMENTS", "sometimes")
+
+    with pytest.raises(ConfigurationError, match="AUTO_INDEX_DEMO_DOCUMENTS"):
+        get_settings()
+
+
 @pytest.mark.parametrize(
     ("name", "value", "message"),
     [
