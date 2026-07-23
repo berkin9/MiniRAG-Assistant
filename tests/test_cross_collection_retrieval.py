@@ -4,7 +4,10 @@ from collections.abc import Sequence
 
 import pytest
 
-from app.services.collection_selection import CollectionSelectionResult
+from app.services.collection_selection import (
+    CollectionSelectionResult,
+    DeterministicMultiCollectionSelector,
+)
 from app.services.collections import CollectionRegistry
 from app.services.cross_collection import (
     CrossCollectionRetrievalError,
@@ -119,6 +122,27 @@ def test_every_collection_is_searched_once_with_per_collection_limit() -> None:
         "policies",
     }
     assert [result.global_rank for result in response.results] == [1, 2]
+
+
+def test_comparison_query_selection_searches_technical_and_policies() -> None:
+    registry = _registry()
+    selection = DeterministicMultiCollectionSelector(registry, 3).select(
+        "Compare authentication implementation with security policy requirements."
+    )
+    stores = {
+        "technical": FakeStore([_match("auth.txt", "Auth", 0.1, "auth")]),
+        "policies": FakeStore([_match("policy.txt", "Policy", 0.2, "policy")]),
+    }
+
+    response = _service(stores).retrieve("compare", selection)
+
+    assert selection.collections == ("technical", "policies")
+    assert response.selected_collections == ("technical", "policies")
+    assert response.collections_searched == ("technical", "policies")
+    assert {result.collection for result in response.results} == {
+        "technical",
+        "policies",
+    }
 
 
 def test_unknown_collection_is_rejected_before_embedding_or_store_access() -> None:

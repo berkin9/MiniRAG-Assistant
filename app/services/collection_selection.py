@@ -94,7 +94,9 @@ class ManualCollectionSelector:
 
 
 class DeterministicMultiCollectionSelector:
-    """Select every matching configured route in stable score order."""
+    """Select every relevant configured route in registry order."""
+
+    _MINIMUM_RELEVANCE_SCORE = 1
 
     def __init__(
         self,
@@ -122,9 +124,11 @@ class DeterministicMultiCollectionSelector:
                 if _contains_term(normalized_query, keyword.casefold())
             )
             score = sum(_term_weight(keyword) for keyword in matched)
-            if score > 0:
+            if score >= self._MINIMUM_RELEVANCE_SCORE:
                 scored.append((score, order, route, matched))
-        scored.sort(key=lambda item: (-item[0], item[1]))
+        # A collection's score decides whether it is relevant, not where it is
+        # displayed. Registry order keeps selections stable as terms are added.
+        scored.sort(key=lambda item: item[1])
         selected = scored[: self._max_collections]
         if not selected:
             result = CollectionSelectionResult(
@@ -136,10 +140,13 @@ class DeterministicMultiCollectionSelector:
         else:
             total_score = sum(item[0] for item in selected)
             collections = tuple(item[2].name for item in selected)
+            evidence = "; ".join(
+                f"{item[2].name} ({', '.join(item[3][:4])})" for item in selected
+            )
             result = CollectionSelectionResult(
                 collections=collections,
                 strategy="deterministic",
-                reason=f"Matched registered routes: {', '.join(collections)}.",
+                reason=f"Matched collection evidence: {evidence}.",
                 confidence=min(1.0, total_score / (total_score + 2)),
             )
         validated = validate_selection(

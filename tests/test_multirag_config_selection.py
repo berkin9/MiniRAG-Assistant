@@ -122,8 +122,72 @@ def test_deterministic_selector_selects_multiple_routes_in_stable_order() -> Non
         "Compare the authentication implementation with the project security policy."
     )
 
-    assert result.collections == ("policies", "technical", "project")
+    assert result.collections == ("project", "technical", "policies")
     assert result.strategy == "deterministic"
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "Compare the authentication implementation with the security access policy. Highlight any mismatches.",
+        "Compare authentication implementation with security policy requirements.",
+        "Explain the authentication implementation and list the related security policy requirements.",
+    ],
+)
+def test_deterministic_selector_keeps_both_technical_and_policy_evidence(
+    query: str,
+) -> None:
+    result = DeterministicMultiCollectionSelector(_registry(), 3).select(query)
+
+    assert result.collections == ("technical", "policies")
+    assert "technical (" in result.reason
+    assert "policies (" in result.reason
+
+
+@pytest.mark.parametrize(
+    ("query", "expected"),
+    [
+        (
+            "How are refresh tokens stored and what authentication protocol is used?",
+            ("technical",),
+        ),
+        ("What are the security access policy requirements?", ("policies",)),
+        ("When is V1 planned to be completed?", ("project",)),
+        ("What is the Kubernetes deployment strategy?", ("general",)),
+    ],
+)
+def test_deterministic_selector_does_not_add_irrelevant_collections(
+    query: str, expected: tuple[str, ...]
+) -> None:
+    result = DeterministicMultiCollectionSelector(_registry(), 3).select(query)
+
+    assert result.collections == expected
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "The policyholder field is populated.",
+        "The compilation result is green.",
+    ],
+)
+def test_deterministic_selector_uses_word_boundaries_for_false_positives(
+    query: str,
+) -> None:
+    result = DeterministicMultiCollectionSelector(_registry(), 3).select(query)
+
+    assert result.collections == ("general",)
+
+
+def test_deterministic_selector_matches_phrases_and_terms_case_insensitively() -> None:
+    selector = DeterministicMultiCollectionSelector(_registry(), 3)
+
+    result = selector.select(
+        "Does the OIDC implementation use an HTTP-ONLY cookie and comply with "
+        "LEAST PRIVILEGE?"
+    )
+
+    assert result.collections == ("technical", "policies")
 
 
 def test_deterministic_selector_uses_default_and_never_needs_provider() -> None:
