@@ -40,71 +40,50 @@ https://minirag-assistant-79ryu9csxxnt8hclogc9gg.streamlit.app/
 
 ## How to Test
 
-The application includes shared demo documents that are indexed automatically when the application starts. You do not need to upload any files before testing.
+The application includes shared demo documents that are automatically indexed when it starts. You do **not** need to upload any documents before testing.
 
 ### Test Configuration
 
-Before asking a question, configure the application as follows:
+Configure the application with the following settings before asking the question:
 
-| Setting      | Value                                         |
-| ------------ | --------------------------------------------- |
-| Tool         | **Ask**                                       |
-| Routing      | **Automatic**                                 |
-| Strategy     | **Deterministic**                             |
-| Collections  | **Auto (do not manually select collections)** |
-| LLM Provider | **Default configured provider**               |
+| Setting | Value |
+|----------|-------|
+| **Retrieval Strategy** | **Cross collection** |
+| **Collection Selection** | **Automatic routing** |
+| **Use Agent** | **Enabled (✓)** |
+
+> **Important:** Do not use **Manual collection** for this test. Automatic routing allows the agent to select the most relevant document collections automatically.
 
 ### Multi-RAG Test
 
-Enter the following question:
+Ask the following question:
 
 ```text
 Compare the authentication implementation with the security policy requirements. Highlight any mismatches.
 ```
 
-### Expected Routing
+### Expected Result
 
-The planner should automatically select both collections:
+The application should automatically select both relevant collections:
 
 ```text
 Selected collections: technical, policies
 Strategy: deterministic
 ```
 
-The retrieval summary should show results from both collections, for example:
+The retrieval summary should include results from both collections, for example:
 
 ```text
 Results per collection — technical: 1, policies: 1
 ```
 
-### Expected Answer
+The generated answer should:
 
-The answer should combine information from both documents.
-
-From the **technical** collection it should mention:
-
-* OpenID Connect (OIDC)
-* 15-minute access token expiration
-* Secure HTTP-only refresh tokens
-* Refresh token rotation
-* Authentication roles
-
-From the **policies** collection it should mention:
-
-* Least-privilege access
-* Manager approval
-* Access reviews every 90 days
-* Access removal within 24 hours
-* Refresh tokens must not appear in logs
-
-If the available documents do not contain enough evidence to prove compliance, the assistant should explicitly state that instead of making unsupported claims.
-
-### Expected Citations
-
-The response should include:
-
-* At least one citation from the **technical** collection
-* At least one citation from the **policies** collection
+- Explain the authentication implementation using the **technical** collection.
+- Explain the security requirements using the **policies** collection.
+- Compare the implementation against the policy requirements.
+- State when the available documents do not provide enough evidence to confirm compliance instead of making unsupported claims.
+- Include citations from both collections.
 
 ### Grounded Answer Test
 
@@ -116,7 +95,7 @@ Does the project use Kubernetes for deployment?
 
 Expected behavior:
 
-The assistant should explain that the indexed documents do not contain this information and should not fabricate an answer.
+The assistant should respond that the indexed documents do not contain enough information to answer the question and should **not** fabricate an answer.
 
 ## Deploy to Streamlit Community Cloud
 
