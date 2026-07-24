@@ -38,6 +38,132 @@ Try the deployed application on Streamlit Community Cloud:
 
 https://minirag-assistant-79ryu9csxxnt8hclogc9gg.streamlit.app/
 
+## How to Test
+
+The application includes shared fictional demo documents that are indexed automatically when the deployed application starts. You do not need to upload a document before testing the main RAG and Multi-RAG features.
+
+### Recommended Test Scenario
+
+1. Open the deployed Streamlit application.
+
+2. Confirm that the shared demo document status is visible. On the first deployment run, the application may display:
+
+```text
+4 available · 4 newly indexed · 0 already indexed
+```
+
+On later sessions, it may display:
+
+```text
+4 available · 0 newly indexed · 4 already indexed
+```
+
+3. Open the question-answering section.
+
+4. Keep the collection selection in automatic routing mode and use the default deterministic strategy.
+
+5. Enter the following question:
+
+```text
+Compare the authentication implementation with the security policy requirements. Highlight any mismatches.
+```
+
+6. Submit the question.
+
+### Expected Result
+
+The agent should select both relevant collections:
+
+```text
+Selected collections: technical, policies
+Strategy: deterministic
+```
+
+The retrieval summary should show results from both collections, for example:
+
+```text
+Results per collection — technical: 1, policies: 1
+```
+
+The answer should include information from the technical implementation document, such as:
+
+* OpenID Connect authentication
+* 15-minute access-token expiration
+* Refresh tokens stored in secure HTTP-only cookies
+* Refresh-token rotation and validation
+
+It should also include policy requirements such as:
+
+* Least-privilege access
+* Manager approval
+* Access reviews every 90 days
+* Access removal within 24 hours after departure
+* Refresh tokens must not appear in logs
+
+The generated answer should compare the implementation with the policy and clearly state when the available documents do not provide enough evidence to confirm compliance.
+
+At least two citations should be displayed:
+
+* One source from the `technical` collection
+* One source from the `policies` collection
+
+### Additional Tests
+
+Test technical-only routing:
+
+```text
+How are refresh tokens stored and what authentication protocol is used?
+```
+
+Expected collection:
+
+```text
+technical
+```
+
+Test policy-only routing:
+
+```text
+What are the security access policy requirements?
+```
+
+Expected collection:
+
+```text
+policies
+```
+
+Test project routing:
+
+```text
+What is the objective of the project and when is V1 planned to be completed?
+```
+
+Expected collection:
+
+```text
+project
+```
+
+Test grounded-answer behavior:
+
+```text
+Does the project use Kubernetes for deployment?
+```
+
+If Kubernetes is not mentioned in the retrieved documents, the application should state that the available evidence does not contain this information. It should not invent an answer.
+
+### Successful Test Criteria
+
+The test is successful when:
+
+* The application loads the shared demo documents.
+* The router selects the relevant collection or collections.
+* Retrieval returns chunks from the expected collections.
+* The answer remains grounded in the retrieved documents.
+* Source citations match the claims in the answer.
+* Unsupported information is not fabricated.
+
 ## Deploy to Streamlit Community Cloud
 
 - Repository: berkin9/MiniRAG-Assistant
