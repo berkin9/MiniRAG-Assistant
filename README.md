@@ -40,39 +40,31 @@ https://minirag-assistant-79ryu9csxxnt8hclogc9gg.streamlit.app/
 
 ## How to Test
 
-The application includes shared fictional demo documents that are indexed automatically when the deployed application starts. You do not need to upload a document before testing the main RAG and Multi-RAG features.
+The application includes shared demo documents that are indexed automatically when the application starts. You do not need to upload any files before testing.
 
-### Recommended Test Scenario
+### Test Configuration
 
-1. Open the deployed Streamlit application.
+Before asking a question, configure the application as follows:
 
-2. Confirm that the shared demo document status is visible. On the first deployment run, the application may display:
+| Setting      | Value                                         |
+| ------------ | --------------------------------------------- |
+| Tool         | **Ask**                                       |
+| Routing      | **Automatic**                                 |
+| Strategy     | **Deterministic**                             |
+| Collections  | **Auto (do not manually select collections)** |
+| LLM Provider | **Default configured provider**               |
 
-```text
-4 available · 4 newly indexed · 0 already indexed
-```
+### Multi-RAG Test
 
-On later sessions, it may display:
-
-```text
-4 available · 0 newly indexed · 4 already indexed
-```
-
-3. Open the question-answering section.
-
-4. Keep the collection selection in automatic routing mode and use the default deterministic strategy.
-
-5. Enter the following question:
+Enter the following question:
 
 ```text
 Compare the authentication implementation with the security policy requirements. Highlight any mismatches.
 ```
 
-6. Submit the question.
+### Expected Routing
 
-### Expected Result
-
-The agent should select both relevant collections:
+The planner should automatically select both collections:
 
 ```text
 Selected collections: technical, policies
@@ -85,84 +77,46 @@ The retrieval summary should show results from both collections, for example:
 Results per collection — technical: 1, policies: 1
 ```
 
-The answer should include information from the technical implementation document, such as:
+### Expected Answer
 
-* OpenID Connect authentication
-* 15-minute access-token expiration
-* Refresh tokens stored in secure HTTP-only cookies
-* Refresh-token rotation and validation
+The answer should combine information from both documents.
 
-It should also include policy requirements such as:
+From the **technical** collection it should mention:
+
+* OpenID Connect (OIDC)
+* 15-minute access token expiration
+* Secure HTTP-only refresh tokens
+* Refresh token rotation
+* Authentication roles
+
+From the **policies** collection it should mention:
 
 * Least-privilege access
 * Manager approval
 * Access reviews every 90 days
-* Access removal within 24 hours after departure
+* Access removal within 24 hours
 * Refresh tokens must not appear in logs
 
-The generated answer should compare the implementation with the policy and clearly state when the available documents do not provide enough evidence to confirm compliance.
+If the available documents do not contain enough evidence to prove compliance, the assistant should explicitly state that instead of making unsupported claims.
 
-At least two citations should be displayed:
+### Expected Citations
 
-* One source from the `technical` collection
-* One source from the `policies` collection
+The response should include:
 
-### Additional Tests
+* At least one citation from the **technical** collection
+* At least one citation from the **policies** collection
 
-Test technical-only routing:
+### Grounded Answer Test
 
-```text
-How are refresh tokens stored and what authentication protocol is used?
-```
-
-Expected collection:
-
-```text
-technical
-```
-
-Test policy-only routing:
-
-```text
-What are the security access policy requirements?
-```
-
-Expected collection:
-
-```text
-policies
-```
-
-Test project routing:
-
-```text
-What is the objective of the project and when is V1 planned to be completed?
-```
-
-Expected collection:
-
-```text
-project
-```
-
-Test grounded-answer behavior:
+Ask:
 
 ```text
 Does the project use Kubernetes for deployment?
 ```
 
-If Kubernetes is not mentioned in the retrieved documents, the application should state that the available evidence does not contain this information. It should not invent an answer.
+Expected behavior:
 
-### Successful Test Criteria
-
-The test is successful when:
-
-* The application loads the shared demo documents.
-* The router selects the relevant collection or collections.
-* Retrieval returns chunks from the expected collections.
-* The answer remains grounded in the retrieved documents.
-* Source citations match the claims in the answer.
-* Unsupported information is not fabricated.
+The assistant should explain that the indexed documents do not contain this information and should not fabricate an answer.
 
 ## Deploy to Streamlit Community Cloud
 
