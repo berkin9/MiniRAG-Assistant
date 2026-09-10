@@ -4,15 +4,121 @@
       "id": "multirag_001",
       "query": "Compare the authentication implementation with security policy requirements.",
       "expected_collections": ["technical", "policies"],
-      "relevant_documents": ["architecture.pdf", "security-policy.pdf"],
+      "relevant_documents": [
+        "ec70f906af041067-minirag_technical_test_document.pdf",
+        "13c4f7bfca44489f-minirag_policies_test_document.pdf"
+      ],
       "description": "Technical implementation and policy evidence are both required."
     },
     {
       "id": "multirag_002",
       "query": "How does the planned release affect the authentication rollout?",
       "expected_collections": ["project", "technical"],
-      "relevant_documents": ["release-plan.md", "authentication.md"],
+      "relevant_documents": [
+        "c5a57a7c425b549e-minirag_project_test_document.pdf",
+        "ec70f906af041067-minirag_technical_test_document.pdf"
+      ],
       "description": "Project and technical evidence should be fused."
+    },
+    {
+      "id": "multirag_003",
+      "query": "Compare project responsibilities with the technical implementation work.",
+      "expected_collections": ["project", "technical"],
+      "relevant_documents": [
+        "c5a57a7c425b549e-minirag_project_test_document.pdf",
+        "ec70f906af041067-minirag_technical_test_document.pdf"
+      ],
+      "description": "Project ownership and technical implementation evidence are required."
+    },
+    {
+      "id": "multirag_004",
+      "query": "Compare the security policy requirements with the authentication design.",
+      "expected_collections": ["policies", "technical"],
+      "relevant_documents": [
+        "13c4f7bfca44489f-minirag_policies_test_document.pdf",
+        "ec70f906af041067-minirag_technical_test_document.pdf"
+      ],
+      "description": "Policy and authentication evidence should both be retrieved."
+    },
+    {
+      "id": "multirag_005",
+      "query": "How do project risks relate to security and privacy requirements?",
+      "expected_collections": ["project", "policies"],
+      "relevant_documents": [
+        "c5a57a7c425b549e-minirag_project_test_document.pdf",
+        "13c4f7bfca44489f-minirag_policies_test_document.pdf"
+      ],
+      "description": "Project risk information should be combined with policy requirements."
+    },
+	{
+	"id": "multirag_006",
+	"query": "Compare the project goals with the overall MiniRAG system description.",
+	"expected_collections": ["project", "general"],
+	"relevant_documents": [
+		"c5a57a7c425b549e-minirag_project_test_document.pdf",
+		"minirag_sample_document.pdf"
+	],
+	"description": "Project objectives should be compared with general system information."
+	},
+    {
+      "id": "multirag_007",
+      "query": "How does the general system architecture relate to the authentication implementation?",
+      "expected_collections": ["general", "technical"],
+      "relevant_documents": [
+		"minirag_sample_document.pdf",
+        "ec70f906af041067-minirag_technical_test_document.pdf"
+      ],
+      "description": "General system context and technical authentication evidence are required."
+    },
+    {
+      "id": "multirag_008",
+      "query": "Compare the overall assistant purpose with the security access policy.",
+      "expected_collections": ["general", "policies"],
+      "relevant_documents": [
+        "minirag_sample_document.pdf",
+        "13c4f7bfca44489f-minirag_policies_test_document.pdf"
+      ],
+      "description": "General assistant context and security policy evidence should be fused."
+    },
+    {
+      "id": "multirag_009",
+      "query": "What project milestones depend on the technical implementation?",
+      "expected_collections": ["project", "technical"],
+      "relevant_documents": [
+        "c5a57a7c425b549e-minirag_project_test_document.pdf",
+        "ec70f906af041067-minirag_technical_test_document.pdf"
+      ],
+      "description": "Project milestones and technical implementation details are required."
+    },
+    {
+      "id": "multirag_010",
+      "query": "How do token handling rules compare with the security policy?",
+      "expected_collections": ["technical", "policies"],
+      "relevant_documents": [
+        "ec70f906af041067-minirag_technical_test_document.pdf",
+        "13c4f7bfca44489f-minirag_policies_test_document.pdf"
+      ],
+      "description": "Authentication token handling should be checked against policy requirements."
+    },
+    {
+      "id": "multirag_011",
+      "query": "Compare project delivery planning with the general MiniRAG overview.",
+      "expected_collections": ["project", "general"],
+      "relevant_documents": [
+        "c5a57a7c425b549e-minirag_project_test_document.pdf",
+        "minirag_sample_document.pdf"
+      ],
+      "description": "Project delivery information should be compared with general system context."
+    },
+    {
+      "id": "multirag_012",
+      "query": "How do system capabilities and technical implementation details relate to each other?",
+      "expected_collections": ["general", "technical"],
+      "relevant_documents": [
+        "minirag_sample_document.pdf",
+        "ec70f906af041067-minirag_technical_test_document.pdf"
+      ],
+      "description": "General system capabilities and technical implementation evidence are required."
     }
   ]
 }
