@@ -1,0 +1,252 @@
+{
+  "total_cases": 12,
+  "failed_cases": 0,
+  "collection_exact_match_rate": 1.0,
+  "average_collection_precision": 1.0,
+  "average_collection_recall": 1.0,
+  "average_relevant_document_recall_at_k": 0.9166666666666666,
+  "total_duplicates_removed": 7,
+  "average_retrieval_latency_ms": 1546.3549757500914,
+  "case_results": [
+    {
+      "id": "multirag_001",
+      "selected_collections": [
+        "technical",
+        "policies"
+      ],
+      "collection_exact_match": true,
+      "collection_precision": 1.0,
+      "collection_recall": 1.0,
+      "relevant_document_recall_at_k": 1.0,
+      "duplicate_removal_count": 0,
+      "results_per_collection": {
+        "technical": 3,
+        "policies": 3
+      },
+      "total_candidates": 6,
+      "global_results": 6,
+      "retrieval_latency_ms": 17596.14091700041,
+      "error_type": null
+    },
+    {
+      "id": "multirag_002",
+      "selected_collections": [
+        "project",
+        "technical"
+      ],
+      "collection_exact_match": true,
+      "collection_precision": 1.0,
+      "collection_recall": 1.0,
+      "relevant_document_recall_at_k": 1.0,
+      "duplicate_removal_count": 0,
+      "results_per_collection": {
+        "project": 3,
+        "technical": 3
+      },
+      "total_candidates": 6,
+      "global_results": 6,
+      "retrieval_latency_ms": 140.7895419997658,
+      "error_type": null
+    },
+    {
+      "id": "multirag_003",
+      "selected_collections": [
+        "project",
+        "technical"
+      ],
+      "collection_exact_match": true,
+      "collection_precision": 1.0,
+      "collection_recall": 1.0,
+      "relevant_document_recall_at_k": 1.0,
+      "duplicate_removal_count": 0,
+      "results_per_collection": {
+        "project": 3,
+        "technical": 3
+      },
+      "total_candidates": 6,
+      "global_results": 6,
+      "retrieval_latency_ms": 58.88970900014101,
+      "error_type": null
+    },
+    {
+      "id": "multirag_004",
+      "selected_collections": [
+        "policies",
+        "technical"
+      ],
+      "collection_exact_match": true,
+      "collection_precision": 1.0,
+      "collection_recall": 1.0,
+      "relevant_document_recall_at_k": 1.0,
+      "duplicate_removal_count": 0,
+      "results_per_collection": {
+        "policies": 3,
+        "technical": 3
+      },
+      "total_candidates": 6,
+      "global_results": 6,
+      "retrieval_latency_ms": 133.30491700071434,
+      "error_type": null
+    },
+    {
+      "id": "multirag_005",
+      "selected_collections": [
+        "project",
+        "policies"
+      ],
+      "collection_exact_match": true,
+      "collection_precision": 1.0,
+      "collection_recall": 1.0,
+      "relevant_document_recall_at_k": 1.0,
+      "duplicate_removal_count": 0,
+      "results_per_collection": {
+        "project": 3,
+        "policies": 3
+      },
+      "total_candidates": 6,
+      "global_results": 6,
+      "retrieval_latency_ms": 61.66591600049287,
+      "error_type": null
+    },
+    {
+      "id": "multirag_006",
+      "selected_collections": [
+        "project",
+        "general"
+      ],
+      "collection_exact_match": true,
+      "collection_precision": 1.0,
+      "collection_recall": 1.0,
+      "relevant_document_recall_at_k": 1.0,
+      "duplicate_removal_count": 1,
+      "results_per_collection": {
+        "project": 3,
+        "general": 3
+      },
+      "total_candidates": 6,
+      "global_results": 5,
+      "retrieval_latency_ms": 150.46733300005144,
+      "error_type": null
+    },
+    {
+      "id": "multirag_007",
+      "selected_collections": [
+        "general",
+        "technical"
+      ],
+      "collection_exact_match": true,
+      "collection_precision": 1.0,
+      "collection_recall": 1.0,
+      "relevant_document_recall_at_k": 0.5,
+      "duplicate_removal_count": 3,
+      "results_per_collection": {
+        "general": 3,
+        "technical": 3
+      },
+      "total_candidates": 6,
+      "global_results": 3,
+      "retrieval_latency_ms": 59.17624999983673,
+      "error_type": null
+    },
+    {
+      "id": "multirag_008",
+      "selected_collections": [
+        "general",
+        "policies"
+      ],
+      "collection_exact_match": true,
+      "collection_precision": 1.0,
+      "collection_recall": 1.0,
+      "relevant_document_recall_at_k": 0.5,
+      "duplicate_removal_count": 0,
+      "results_per_collection": {
+        "general": 3,
+        "policies": 3
+      },
+      "total_candidates": 6,
+      "global_results": 6,
+      "retrieval_latency_ms": 59.940540999377845,
+      "error_type": null
+    },
+    {
+      "id": "multirag_009",
+      "selected_collections": [
+        "project",
+        "technical"
+      ],
+      "collection_exact_match": true,
+      "collection_precision": 1.0,
+      "collection_recall": 1.0,
+      "relevant_document_recall_at_k": 1.0,
+      "duplicate_removal_count": 0,
+      "results_per_collection": {
+        "project": 3,
+        "technical": 3
+      },
+      "total_candidates": 6,
+      "global_results": 6,
+      "retrieval_latency_ms": 57.463916999950015,
+      "error_type": null
+    },
+    {
+      "id": "multirag_010",
+      "selected_collections": [
+        "technical",
+        "policies"
+      ],
+      "collection_exact_match": true,
+      "collection_precision": 1.0,
+      "collection_recall": 1.0,
+      "relevant_document_recall_at_k": 1.0,
+      "duplicate_removal_count": 0,
+      "results_per_collection": {
+        "technical": 3,
+        "policies": 3
+      },
+      "total_candidates": 6,
+      "global_results": 6,
+      "retrieval_latency_ms": 57.37029200008692,
+      "error_type": null
+    },
+    {
+      "id": "multirag_011",
+      "selected_collections": [
+        "project",
+        "general"
+      ],
+      "collection_exact_match": true,
+      "collection_precision": 1.0,
+      "collection_recall": 1.0,
+      "relevant_document_recall_at_k": 1.0,
+      "duplicate_removal_count": 1,
+      "results_per_collection": {
+        "project": 3,
+        "general": 3
+      },
+      "total_candidates": 6,
+      "global_results": 5,
+      "retrieval_latency_ms": 56.73320799996873,
+      "error_type": null
+    },
+    {
+      "id": "multirag_012",
+      "selected_collections": [
+        "general",
+        "technical"
+      ],
+      "collection_exact_match": true,
+      "collection_precision": 1.0,
+      "collection_recall": 1.0,
+      "relevant_document_recall_at_k": 1.0,
+      "duplicate_removal_count": 2,
+      "results_per_collection": {
+        "general": 3,
+        "technical": 3
+      },
+      "total_candidates": 6,
+      "global_results": 4,
+      "retrieval_latency_ms": 124.31716700029938,
+      "error_type": null
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+id,query,expected_plan,actual_plan,expected_tools,actual_tools,confidence,fallback,latency_ms,passed,error_type
+ask_001,How is authentication implemented?,ask,ask,ask,ask,1.0,False,0.9322500000052969,True,
+ask_002,Explain the deployment process.,ask,ask,ask,ask,1.0,False,0.07904199992481153,True,
+search_001,Find authentication chunks.,search,search,search,search,1.0,False,0.06362499971146462,True,
+search_002,Retrieve relevant chunks about token storage.,search,search,search,search,1.0,False,0.06404199984899606,True,
+collections_001,List collections.,collections,collections,collections,collections,1.0,False,0.05145800014361157,True,
+collections_002,Show the collections.,collections,collections,collections,collections,1.0,False,0.050332999762758845,True,
+routing_001,Which collection handles authentication?,routing,routing,routing,routing,1.0,False,0.669666999783658,True,
+routing_002,Explain the routing.,routing,routing,routing,routing,1.0,False,0.06695899992337218,True,
+route_ask_001,"Explain the routing, then answer: how is authentication implemented?",route_and_ask,route_and_ask,routing|ask,routing|ask,1.0,False,0.07504199993491056,True,
+route_ask_002,"Which collection handles authentication, and what do the documents say?",route_and_ask,route_and_ask,routing|ask,routing|ask,1.0,False,0.06633300017711008,True,
+route_search_001,Route this question and retrieve the matching chunks: how are refresh tokens stored?,route_and_search,route_and_search,routing|search,routing|search,1.0,False,0.06183400000736583,True,
+route_search_002,Show the routing and show the matching sources: where are access tokens stored?,route_and_search,route_and_search,routing|search,routing|search,1.0,False,0.0652080002510047,True,
