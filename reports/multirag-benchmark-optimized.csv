@@ -1,0 +1,13 @@
+id,selected_collections,collection_exact_match,collection_precision,collection_recall,relevant_document_recall_at_k,duplicate_removal_count,total_candidates,global_results,retrieval_latency_ms,error_type
+multirag_001,technical|policies,True,1.0,1.0,1.0,0,6,6,11617.426209000769,
+multirag_002,project|technical,True,1.0,1.0,1.0,0,6,6,131.77279100091255,
+multirag_003,project|technical,True,1.0,1.0,1.0,0,6,6,57.716082999832,
+multirag_004,policies|technical,True,1.0,1.0,1.0,0,6,6,108.36620800000674,
+multirag_005,project|policies,True,1.0,1.0,1.0,0,6,6,56.92483299935702,
+multirag_006,project|general,True,1.0,1.0,1.0,0,6,6,112.03533300067647,
+multirag_007,general|technical,True,1.0,1.0,1.0,0,6,6,56.695749999562395,
+multirag_008,general|policies,True,1.0,1.0,1.0,0,6,6,57.359500000529806,
+multirag_009,project|technical,True,1.0,1.0,1.0,0,6,6,58.21658300010313,
+multirag_010,technical|policies,True,1.0,1.0,1.0,0,6,6,56.40487500022573,
+multirag_011,project|general,True,1.0,1.0,1.0,0,6,6,56.21350000001257,
+multirag_012,general|technical,True,1.0,1.0,1.0,0,6,6,108.52062499907333,
