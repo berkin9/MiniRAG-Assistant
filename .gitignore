@@ -11,3 +11,5 @@ __pycache__/
 *.jsonl
 data/uploads/*
 !data/uploads/.gitkeep
+.chroma_baseline_backup/
+data/minirag_sample_document.pdf
